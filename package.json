@@ -1,0 +1,46 @@
+{
+  "name": "raml-object-api",
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KonstantinSviridov/raml-object-api.git"
+  },
+  "keywords": [
+    "raml",
+    "js",
+    "parser",
+    "json",
+    "object",
+    "expand"
+  ],
+  "author": "Konstantin Sviridov",
+  "license": "SEE LICENSE IN license.txt",
+  "bugs": {
+    "url": "https://github.com/KonstantinSviridov/raml-object-api/issues"
+  },
+  "homepage": "https://github.com/KonstantinSviridov/raml-object-api#readme",
+  "devDependencies": {
+    "typescript": "2.5.2",
+    "rimraf": "*",
+    "mocha": "^4.0.0",
+    "chai": "4.1.2",
+    "@types/mocha": "*",
+    "@types/chai": "*",
+    "webpack": "1.15.0"
+  },
+  "dependencies": {
+    "@types/node": "4.2.20",
+    "@types/underscore": "1.8.4",
+    "@types/xml2js": "0.4.0",
+    "underscore": "1.8.3",
+    "raml-typeexpressions-parser": "0.0.9",
+    "xml2js": "0.4.19",
+    "rimraf": "2.6.2"
+  }
+}
