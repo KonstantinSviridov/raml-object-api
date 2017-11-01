@@ -1,6 +1,6 @@
 import raml = require("./model-interfaces");
 import index = require("../index");
-import ts = index.typeSystem;
+import ts = index.typesystem;
 import ti = ts.tsInterfaces;
 import api = require("../typings-new-format/spec-1.0/api");
 import datamodel = require("../typings-new-format/spec-1.0/datamodel");

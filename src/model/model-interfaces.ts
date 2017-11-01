@@ -1,5 +1,5 @@
 import index = require("../index");
-import ts = index.typeSystem;
+import ts = index.typesystem;
 import tsInterfaces = ts.tsInterfaces;
 export import IAnnotation=tsInterfaces.IAnnotation;
 export import Facet = tsInterfaces.ITypeFacet;
