@@ -67,7 +67,7 @@ export interface Method10 extends MethodBase10 {
      */
     method: string
 
-    uriParameters?: datamodel.TypeReference10[]
+    uriParameters?: datamodel.TypeDeclaration[]
 
     /**
      * Complete relative URI of the owner resource

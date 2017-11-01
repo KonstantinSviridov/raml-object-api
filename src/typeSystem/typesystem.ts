@@ -1657,6 +1657,10 @@ export abstract class AbstractType implements tsInterfaces.IParsedType, tsInterf
         return <any>this.declaredMeta().filter(x => x instanceof Annotation);
     }
 
+    scalarsAnnotations(): {[key:string]:metaInfo.Annotation[][]}{
+        return {};
+    }
+
     componentType() {
         var vl = this.oneMeta(ComponentShouldBeOfType);
         if (vl) {
@@ -1733,10 +1737,12 @@ export abstract class AbstractType implements tsInterfaces.IParsedType, tsInterf
             this.definedFacetInfosMap = {};
             this.definedFacetInfos = [];
             var m = this.meta();
-            for (let i = m.length - 1; i >= 0; i--) {
-                if (metaInfo.FacetDeclaration.isInstance(m[i])&&!(<metaInfo.FacetDeclaration>m[i]).isBuiltIn()) {
-                    let p = new PropertyInfo(<metaInfo.FacetDeclaration>m[i]);
-                    this.definedFacetInfosMap[p.name()] = p;
+            for (let f of m) {
+                if (metaInfo.FacetDeclaration.isInstance(f)&&!(<metaInfo.FacetDeclaration>f).isBuiltIn()) {
+                    let p = new PropertyInfo(<metaInfo.FacetDeclaration>f);
+                    if(!this.definedFacetInfosMap[f.facetName()]){
+                        this.definedFacetInfosMap[p.name()] = p;
+                    }
                     this.definedFacetInfos.push(p);
                 }
             }

@@ -19,6 +19,8 @@ export interface IAnnotated {
     annotations(): IAnnotation[]
 
     annotation(name: string): any
+
+    scalarsAnnotations():{[key:string]:IAnnotation[][]}
 }
 
 export interface SecuritySchemeDefinition extends IAnnotated {
@@ -85,6 +87,8 @@ export interface ResourceBase extends IAnnotated {
 
     displayName():string
 
+    description():string
+
     securedBy(): SecuredBy[]
 
     methods(): Method[]
@@ -122,6 +126,8 @@ export interface MethodBase extends IAnnotated {
     bodies(): Body[]; //
 
     responses(): Response[] //
+
+    protocols():string[]
 }
 
 export interface Method extends MethodBase {

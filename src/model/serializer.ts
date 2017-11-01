@@ -104,6 +104,16 @@ export class JsonSerializer{
         if(annotations && annotations.length){
             result.annotations = node.annotations().map(x=>this.serializeAnnotation(x));
         }
+        const scalarsAnnotations = node.scalarsAnnotations();
+        if(scalarsAnnotations){
+            const fNames = Object.keys(scalarsAnnotations);
+            if(fNames.length) {
+                result.scalarsAnnotations = {};
+                for (let fName of fNames) {
+                    result.scalarsAnnotations[fName] = scalarsAnnotations[fName].map(x => x.map(y => this.serializeAnnotation(y)));
+                }
+            }
+        }
         return result;
     }
 
@@ -159,6 +169,9 @@ export class JsonSerializer{
         if(node.description()!=null){
             result.description = node.description();
         }
+        if(node.protocols()&&node.protocols().length){
+            result.protocols = node.protocols();
+        }
         this.serializeAnnotated(node,result);
         const bodies = node.bodies();
         if(bodies&&bodies.length){
@@ -170,6 +183,7 @@ export class JsonSerializer{
             let queryParameters:raml.Parameter[] = [];
             let headers:raml.Parameter[] = [];
             let queryString:raml.Parameter[] = [];
+            let uriParameters:raml.Parameter[] = [];
             for(let p of parameters){
                 const location = p.location();
                 if(location=="query"){
@@ -180,6 +194,9 @@ export class JsonSerializer{
                 }
                 else if(location=="queryString"){
                     queryString.push(p);
+                }
+                else if(location=="uriParameters"){
+                    uriParameters.push(p);
                 }
             }
             if(queryParameters.length){
@@ -208,6 +225,10 @@ export class JsonSerializer{
             absoluteParentUri: node.resource().absoluteUrl()
         };
         this.serializeMethodBase(node,result);
+        const uriParameters = node.parameters().filter(x=>x.location()=="uriParameters");
+        if(uriParameters.length){
+            result.uriParameters = uriParameters.map(x=>this.serializeParameter(x));
+        }
         return result;
     }
 
@@ -228,7 +249,9 @@ export class JsonSerializer{
         if(node.displayName()){
             result.displayName = node.displayName();
         }
-
+        if(node.description()){
+            result.description = node.description();
+        }
         this.serializeAnnotated(node,result);
         const methods = node.methods();
         if(methods&&methods.length){

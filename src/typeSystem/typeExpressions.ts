@@ -34,7 +34,7 @@ export function parseToType(val:string,t:ts.TypeRegistry, contentProvidingNode?:
                 return new ts.ExternalType("", q, json, contentProvider, typeAttributeContentProvider);
             }
 
-            var node:BaseNode = typeExpressionDefs.parse(val);
+            var node:BaseNode = parse(val);
             var result= parseNode(node, t);
             return result;    
         } else {
@@ -114,5 +114,47 @@ export function storeToString(t:ts.AbstractType):string{
 
 
 export function parse(str:string):BaseNode{
-    return typeExpressionDefs.parse(str);
+    let result = typeExpressionDefs.parse(str);
+    result = checkNil(result);
+    return result;
+}
+
+function checkNil(node:BaseNode):BaseNode{
+    if(node.type=="name"){
+        const lit = <Literal>node;
+        const value = lit.value;
+        if(value && value.length && value.charAt(value.length-1)=="?"){
+            let rValue = value.substring(0,value.length-1);
+            let rExpr = parse(rValue);
+            let result:BaseNode = <Union>{
+                type: "union",
+                first: rExpr,
+                rest: {
+                    type: "name",
+                    value: "nil"
+                }
+            };
+            if(typeof lit.arr === "number" && lit.arr >0){
+                result = <Parens>{
+                    type: "parens",
+                    expr: result,
+                    arr: lit.arr
+                }
+            }
+            return result;
+        }
+        else{
+            return lit;
+        }
+    }
+    else if(node.type=="union"){
+        const union = (<Union>node);
+        union.first = checkNil(union.first);
+        union.rest = checkNil(union.rest);
+    }
+    else if(node.type=="parens"){
+        const parens = (<Parens>node);
+        parens.expr = checkNil(parens.expr);
+    }
+    return node;
 }

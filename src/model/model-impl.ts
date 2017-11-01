@@ -36,26 +36,44 @@ function normalizeType(i: datamodel.TypeReference10) {
         delete res.__METADATA__;
         delete res.mediaType;
         delete res.sourceMap;
+        delete res.fixedFacets;
+        delete res.simplifiedExamples;
+        if(t.type && t.type.length){
+            res.type = t.type.map(x=>{
+                if(typeof(x) === "object"){
+                    return normalizeType(x);
+                }
+                return x;
+            });
+        }
         if (t.examples) {
             if(t.examples.length==1 && t.examples[0].name==null){
                 res.example = t.examples[0].value;
                 delete res.examples;
             }
             else {
-                let examples = [];
+                let examples = {};
                 t.examples.forEach(e => {
+                    let name = e.name;
                     let ex = {
-                        name: e.name,
-                        value: e.value
+                        value: e.value,
+                        strict: e.strict
                     };
                     if (e.annotations) {
                         Object.keys(e.annotations).forEach(x => {
                             ex['(' + x + ')'] = e.annotations[x].structuredValue;
                         });
                     }
-                    examples.push(ex);
+                    if(!name){
+                        res.example = ex;
+                    }
+                    else {
+                        examples[e.name] = ex;
+                    }
                 });
-                res.examples = examples;
+                if(Object.keys(examples).length) {
+                    res.examples = examples;
+                }
             }
         }
         if (t.annotations) {
@@ -69,10 +87,7 @@ function normalizeType(i: datamodel.TypeReference10) {
         }
         let facets = t.facets;
         if (facets && facets.length) {
-            res.facets = {};
-            for(let x of facets){
-                res.facets[x.name] = normalizeType(x);
-            }
+            res.facets = facets.map(x=>normalizeType(x));
         }
         let items = (<datamodel.ArrayTypeDeclaration>t).items;
         if(items && items.length){
@@ -108,6 +123,8 @@ export abstract class Annotated{
         return null;
     }
     abstract annotations(): ti.IAnnotation[]
+
+    abstract scalarsAnnotations():{[key:string]:ti.IAnnotation[][]};
 }
 
 export abstract class Proxy<JSONType extends common.Annotable> extends Annotated implements ti.IAnnotatedElement {
@@ -140,6 +157,7 @@ export abstract class Proxy<JSONType extends common.Annotable> extends Annotated
 
     private _annotations;
 
+    private _scalarsAnnotations;
 
     annotations(): ti.IAnnotation[] {
         if (this._annotations) {
@@ -164,6 +182,28 @@ export abstract class Proxy<JSONType extends common.Annotable> extends Annotated
         return this.json;
     }
 
+    scalarsAnnotations():{[key:string]:ti.IAnnotation[][]}{
+        if (this._scalarsAnnotations) {
+            return this._scalarsAnnotations;
+        }
+        let result:{[key:string]:Annotation[][]} = {};
+        if (this.json.scalarsAnnotations) {
+            Object.keys(this.json.scalarsAnnotations).forEach(x => {
+                let srcArr1 = this.json.scalarsAnnotations[x];
+                if(!srcArr1.length){
+                    return;
+                }
+                let dstArr1:Annotation[][] = [];
+                result[x] = dstArr1;
+                for(let srcArr2 of srcArr1){
+                    let dstArr2 = srcArr2.map(x=>new Annotation(x, this));
+                    dstArr1.push(dstArr2);
+                }
+            });
+        }
+        this._annotations = result;
+        return this._annotations;
+    }
 }
 
 export class Annotation extends Proxy<common.AnnotationInstance> implements raml.IAnnotation {
@@ -282,7 +322,7 @@ export function mapMap<T extends Proxy<any>>(parent: Proxy<any>, property: strin
     return res;
 }
 
-function gatherResources(r: Api|raml.Resource, res: raml.Resource[]) {
+function gatherResources(r: raml.Api|raml.Resource, res: raml.Resource[]) {
     let resources: raml.Resource[] = r.resources();
     resources.forEach(x => {
         res.push(x);
@@ -480,6 +520,10 @@ export class Body extends Annotated implements raml.Body {
     annotations() {
         return this.p.annotations();
     }
+
+    scalarsAnnotations():{[key:string]:ti.IAnnotation[][]}{
+        return this.p.scalarsAnnotations();
+    }
 }
 export class Parameter extends  Annotated implements raml.Parameter {
 
@@ -505,6 +549,10 @@ export class Parameter extends  Annotated implements raml.Parameter {
 
     annotations() {
         return this.p.annotations();
+    }
+
+    scalarsAnnotations():{[key:string]:ti.IAnnotation[][]}{
+        return this.p.scalarsAnnotations();
     }
 }
 
@@ -540,7 +588,11 @@ export class Method extends Proxy<methods.Method10> implements raml.Method {
     }
 
     parameters() {
-        let initial: raml.Parameter[] = params(this.json.queryParameters, this, "query").concat(params(this.json.headers, this, "headers"))
+        let initial: raml.Parameter[] =
+            params(this.json.queryParameters, this, "query")
+                .concat(params(this.json.headers, this, "headers"))
+                .concat(params(this.json.uriParameters, this, "uriParameters"));
+
         initial = this.resource().allUriParameters().concat(initial);
         if (this.json.queryString) {
             let td = normalizeType(this.json.queryString);
@@ -614,6 +666,10 @@ export class Resource extends Proxy<resources.Resource10> implements raml.Resour
         return this.json.displayName;
     }
 
+    description(){
+        return this.json.description;
+    }
+
     relativeUrl() {
         return this.json.relativeUri;
     }
@@ -643,11 +699,19 @@ export class Resource extends Proxy<resources.Resource10> implements raml.Resour
     }
 
     allUriParameters() {
+        const ownUriParameters:raml.Parameter[] = this.uriParameters();
+        let parentParameters:raml.Parameter[] = [];
+        const paramsMap:{[key:string]:boolean} = {};
+        ownUriParameters.forEach(x=>paramsMap[x.name()]=true);
         let p = this.parentResource();
         if (p) {
-            return p.allUriParameters().concat(this.uriParameters())
+            parentParameters = p.allUriParameters();
         }
-        return this.uriParameters();
+        else if(this.owningApi()){
+            parentParameters = this.owningApi().baseUriParameters();
+        }
+        parentParameters = parentParameters.filter(x=>!paramsMap[x.name()]);
+        return ownUriParameters.concat(parentParameters);
     }
 
     resources(): raml.Resource[] {

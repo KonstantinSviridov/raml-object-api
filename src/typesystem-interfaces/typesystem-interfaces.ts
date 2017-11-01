@@ -283,6 +283,8 @@ export interface IParsedType extends IHasExtra {
 
     declaredAnnotations(): IAnnotation[]
 
+    scalarsAnnotations(): {[key:string]:IAnnotation[][]};
+
     registry(): IParsedTypeCollection
 
     isAssignableFrom(t:IParsedType):boolean

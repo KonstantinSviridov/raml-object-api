@@ -878,8 +878,15 @@ function parse(
                 else{
                     sAnnotations.push([]);
                 }
-                return x.value();
-            }).map(y=>typeExpressions.parseToType(""+y,r, n));
+                return x;
+            }).map(y=>{
+                if(y.kind()==NodeKind.MAP){
+                    return parse("", y, r, false, false, false);
+                }
+                else {
+                    return typeExpressions.parseToType(""+y.value(),r, n);
+                }
+            });
         }
         else if (tp.kind()==NodeKind.MAP){
             superTypes=[parse("",tp,r,false,false,false)];
@@ -898,12 +905,29 @@ function parse(
         }
     }
     var result:AbstractType=null;
+    if (superTypes.length==1
+        &&superTypes[0].name()=="union"
+        &&superTypes[0].options().length<2){
+
+        const anyOf = n.childWithKey("anyOf");
+        const optNodes = anyOf && anyOf.children();
+        if(optNodes && optNodes.length){
+            const opts = optNodes.map(o=>{
+                let parsedOption = parse("",o,r,false,false,false);
+                if(o.kind()==NodeKind.SCALAR){
+                    parsedOption = parsedOption.superTypes()[0]
+                }
+                return parsedOption;
+            });
+            result = ts.union(name,opts);
+        }
+    }
     if (superTypes.length==1&&superTypes[0].isAnonymous()&&false){
        // var ab:AbstractType= superTypes[0];
        // ab.patchName(name);
        // result=ab;
     }
-    else {
+    else if(!result){
        result = ts.derive(name, superTypes);
     }
     for(var i = 0 ; i < typePropAnnotations.length ; i++){
@@ -1072,7 +1096,7 @@ function parse(
 
     var props=n.childWithKey("facets");
     if (props){
-        if (props.kind()==NodeKind.MAP){
+        if (props.kind()==NodeKind.MAP||props.kind()==NodeKind.ARRAY){
             props.children().forEach(x=>{
                 var bean=parsePropertyBean(x,r,_col);
                 result.addMeta(new meta.FacetDeclaration(bean.id,bean.type,bean.optional));
