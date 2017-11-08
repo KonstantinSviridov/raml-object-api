@@ -103,7 +103,13 @@ export enum MetaInformationKind {
     Constraint,
     Modifier,
     Discriminator,
-    DiscriminatorValue
+    DiscriminatorValue,
+    SchemaPath,
+    SourceMap,
+    ParserMetadata,
+    ImportedByChain,
+    AcceptAllScalarsAsStrings,
+    SkipValidation
 }
 
 /**
@@ -156,6 +162,11 @@ export interface ITypeFacet {
     isConstraint():boolean
 }
 
+export interface IConstraint extends ITypeFacet{
+
+    composeWith(r: IConstraint):IConstraint
+}
+
 /**
  * Model of annotation instances applied to types or their facets
  */
@@ -171,6 +182,20 @@ export interface IAnnotation extends ITypeFacet,IAnnotationInstance {
      */
     owner(): IParsedType
 
+    /**
+     * Annotation name
+     */
+    name():string;
+
+    /**
+     * Annotation value
+     */
+    value(): any;
+
+    /**
+     * Annotation definition type
+     */
+    definition(): IParsedType;
 }
 
 export interface IParsedTypeCollection {
@@ -226,7 +251,7 @@ export  interface ITypeRegistry {
 
 export interface IPropertyInfo {
 
-    name();
+    name():string;
 
     required(): boolean
 
@@ -576,6 +601,10 @@ export interface IExample {
 
     name(): string
 
+    displayName():string
+
+    description():string
+
     strict(): boolean
 
     value(): boolean
@@ -601,13 +630,51 @@ export function getAnnotationValidationPlugins(): IAnnotationValidationPlugin[] 
 }
 
 
-export interface MarkerObject {
+export interface MarkerObject{
+    /**
+     * Line number, starting from zero
+     */
     line: number
+    /**
+     * Column number, starting from zero
+     */
     column: number
+    /**
+     * Position, starting from zero
+     */
     position: number
 }
 
 export interface RangeObject {
     start: MarkerObject,
     end: MarkerObject
+}
+
+export interface SourceInfo{
+
+    /**
+     * Path to file which contains definition
+     */
+    path?: string
+
+    /**
+     * Namespace of defining library if any
+     */
+    namespace?: string
+
+}
+
+export interface ElementSourceInfo extends SourceInfo{
+
+    /**
+     * Source information for fields which are defined in another file rather then their owning component.
+     * If all scalar fields of the component are defined in the same file, the 'scalarsSources' field is undefined.
+     */
+    scalarsSources: { [key:string]:SourceInfo[] }
+
+}
+
+export interface HasSource {
+
+    sourceMap(): ElementSourceInfo
 }

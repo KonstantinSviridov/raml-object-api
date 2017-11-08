@@ -1,4 +1,5 @@
 import ts=require("./typesystem");
+import {BigNumber} from "bignumber.js";
 var messageRegistry = ts.messageRegistry;
 import _= require("./utils");
 import {AndRestriction} from "./typesystem";
@@ -14,7 +15,7 @@ export abstract class MatchesProperty extends ts.Constraint{
          return false;
      }
 
-    constructor(private _type:ts.AbstractType){super()}
+    constructor(private _type:ts.AbstractType, protected optional=false){super()}
 
     private static CLASS_IDENTIFIER_MatchesProperty = "restrictions.MatchesProperty.light";
 
@@ -129,6 +130,10 @@ export abstract class MatchesProperty extends ts.Constraint{
     range():ts.AbstractType{
         return this._type;
     }
+
+    isOptional():boolean{
+        return this.optional;
+    }
 }
 
 export class MatchToSchema extends  ts.Constraint{
@@ -156,6 +161,19 @@ export class MatchToSchema extends  ts.Constraint{
  * this is a constraint which checks that object has no unknown properties if at has not additional properties
  */
 export class KnownPropertyRestriction extends ts.Constraint{
+
+    private static CLASS_IDENTIFIER_KnownPropertyRestriction = "typesystem.KnownPropertyRestriction.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(KnownPropertyRestriction.CLASS_IDENTIFIER_KnownPropertyRestriction);
+    }
+
+    public static isInstance(instance: any): instance is KnownPropertyRestriction {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), KnownPropertyRestriction.CLASS_IDENTIFIER_KnownPropertyRestriction);
+    }
 
     facetName(){
         return "closed"
@@ -234,7 +252,7 @@ export class HasProperty extends ts.Constraint{
         super();
     }
 
-    private static CLASS_IDENTIFIER_HasProperty = "restrictions.HasProperty.light";
+    private static CLASS_IDENTIFIER_HasProperty = "restrictions.HasProperty.lite";
 
     public getClassIdentifier() : string[] {
         var superIdentifiers:string[] = super.getClassIdentifier();
@@ -271,7 +289,7 @@ export class HasProperty extends ts.Constraint{
     }
 
     composeWith(r:Constraint):Constraint{
-        if (r instanceof  HasProperty){
+        if (HasProperty.isInstance(r)){
             var hp:HasProperty=r;
             if (hp.name===this.name){
                 return this;
@@ -286,9 +304,23 @@ export class HasProperty extends ts.Constraint{
  */
 export class PropertyIs extends MatchesProperty{
 
-    constructor(private name: string,private type:ts.AbstractType, private optional:boolean=false){
-        super(type);
+    constructor(private name: string,private type:ts.AbstractType,optional=false){
+        super(type,optional);
     }
+
+    private static CLASS_IDENTIFIER_PropertyIs = "restrictions.PropertyIs.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(PropertyIs.CLASS_IDENTIFIER_PropertyIs);
+    }
+
+    public static isInstance(instance: any): instance is PropertyIs {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), PropertyIs.CLASS_IDENTIFIER_PropertyIs);
+    }
+
     matches(s:string):boolean{
         return s===this.name;
     }
@@ -358,10 +390,6 @@ export class PropertyIs extends MatchesProperty{
         }
         return null;
     }
-
-    isOptional():boolean{
-        return this.optional;
-    }
 }
 
 var anotherSource:any[] = [];
@@ -398,9 +426,23 @@ export function anotherRestrictionComponentsCount():number{
  */
 export class MapPropertyIs extends MatchesProperty{
 
-    constructor(private regexp: string,private type:ts.AbstractType){
-        super(type);
+    constructor(private regexp: string,private type:ts.AbstractType,optional=false){
+        super(type,optional);
     }
+
+    private static CLASS_IDENTIFIER_MapPropertyIs = "restrictions.MapPropertyIs.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(MapPropertyIs.CLASS_IDENTIFIER_MapPropertyIs);
+    }
+
+    public static isInstance(instance: any): instance is MapPropertyIs {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), MapPropertyIs.CLASS_IDENTIFIER_MapPropertyIs);
+    }
+
     path(){
         return `/${this.regexp}/`;
     }
@@ -414,9 +456,9 @@ export class MapPropertyIs extends MatchesProperty{
     requiredType(){
         return ts.OBJECT;
     }
-     propId():string{
-         return '['+this.regexp+']'
-     }
+    propId():string{
+        return '['+this.regexp+']'
+    }
 
     facetName(){
         return "mapPropertyIs"
@@ -502,11 +544,25 @@ export class MapPropertyIs extends MatchesProperty{
  */
 export class AdditionalPropertyIs extends MatchesProperty{
 
-    constructor(private type:ts.AbstractType){
-        super(type);
+    constructor(private type:ts.AbstractType,optional=false){
+        super(type,optional);
     }
+
+    private static CLASS_IDENTIFIER_AdditionalPropertyIs = "restrictions.AdditionalPropertyIs.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(AdditionalPropertyIs.CLASS_IDENTIFIER_AdditionalPropertyIs);
+    }
+
+    public static isInstance(instance: any): instance is AdditionalPropertyIs {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), AdditionalPropertyIs.CLASS_IDENTIFIER_AdditionalPropertyIs);
+    }
+
     path(){
-        return this.facetName();
+        return "/.*/";
     }
     matches(s:string):boolean{
         return true;
@@ -746,7 +802,7 @@ export abstract class MinMaxRestriction extends FacetRestriction<Number>{
                 this,{ facetName: this.facetName()},ts.Status.ERROR,true);
         }
         if (this.isIntConstraint()){
-            if (!is_int(this.value())){
+            if (!new BigNumber(this.value().toString()).isInteger()){
                 return ts.error(messageRegistry.FACET_REQUIRE_INTEGER,
                     this,{ facetName: this.facetName()},ts.Status.ERROR,true);
             }
@@ -765,7 +821,7 @@ export abstract class MinMaxRestriction extends FacetRestriction<Number>{
             if (mx.facetName() == this.facetName()) {
                 if (mx.isMax() == this.isMax()) {
                     if (this.isMax()){
-                        if (this.value()<mx.value()){
+                        if (this.value()>mx.value()){
                             return mx;
                         }
                         else{
@@ -773,7 +829,7 @@ export abstract class MinMaxRestriction extends FacetRestriction<Number>{
                         }
                     }
                     else{
-                        if (this.value()>mx.value()){
+                        if (this.value()<mx.value()){
                             return mx;
                         }
                         else{
@@ -831,9 +887,11 @@ export class MultipleOf extends FacetRestriction<Number>{
         return this._value;
     }
     check(o:any):ts.Status{
-        if (typeof  o=='number'){
-            var q=o/this.value();
-            if (!is_int(q)){
+        if (typeof o == 'number'){
+            let devided = new BigNumber(o.toString());
+            let devisor = new BigNumber(this.value().toString());
+            let quotient = devided.dividedBy(devisor);
+            if (!quotient.isInteger()){
                 return ts.error(messageRegistry.EVEN_RATIO, this, { val1: o, val2 : this.value() });
             }
         }

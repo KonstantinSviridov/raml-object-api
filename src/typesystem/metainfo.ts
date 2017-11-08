@@ -1,9 +1,8 @@
 import ts=require("./typesystem");
+import tsInterfaces = require("../typesystem-interfaces/typesystem-interfaces");
 var messageRegistry = ts.messageRegistry;
 import {Status} from "./typesystem";
 import {PropertyIs} from "./restrictions";
-import parse = require("./parse");
-import tsInterfaces = parse.tsInterfaces;
 import _ = require("underscore");
 import xmlio = require("./xmlio");
 
@@ -14,7 +13,7 @@ export class MetaInfo extends ts.TypeInformation {
         super(inhertitable)
     }
 
-    private static CLASS_IDENTIFIER_MetaInfo = "metainfo.MetaInfo.light";
+    private static CLASS_IDENTIFIER_MetaInfo = "metainfo.MetaInfo.lite";
 
     public getClassIdentifier() : string[] {
         var superIdentifiers:string[] = super.getClassIdentifier();
@@ -56,6 +55,19 @@ export class Description extends MetaInfo{
 export  class NotScalar extends MetaInfo{
     constructor(){
         super("notScalar",true)
+    }
+
+    private static CLASS_IDENTIFIER_NotScalar = "metainfo.NotScalar.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(NotScalar.CLASS_IDENTIFIER_NotScalar);
+    }
+
+    public static isInstance(instance: any): instance is NotScalar {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), NotScalar.CLASS_IDENTIFIER_NotScalar);
     }
 
     kind() : tsInterfaces.MetaInformationKind {
@@ -429,6 +441,19 @@ export class HasPropertiesFacet extends MetaInfo{
         super("hasPropertiesFacet",null);
     }
 
+    private static CLASS_IDENTIFIER_HasPropertiesFacet = "metainfo.HasPropertiesFacet.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(HasPropertiesFacet.CLASS_IDENTIFIER_HasPropertiesFacet);
+    }
+
+    public static isInstance(instance: any): instance is HasPropertiesFacet {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), HasPropertiesFacet.CLASS_IDENTIFIER_HasPropertiesFacet);
+    }
+
     kind() : tsInterfaces.MetaInformationKind {
         return tsInterfaces.MetaInformationKind.HasPropertiesFacet;
     }
@@ -628,6 +653,51 @@ export class Default extends MetaInfo{
         return tsInterfaces.MetaInformationKind.Default;
     }
 }
+
+export class SchemaPath extends MetaInfo{
+    constructor(path:string){
+        super("schemaPath",path,true);
+    }
+
+    kind() : tsInterfaces.MetaInformationKind {
+        return tsInterfaces.MetaInformationKind.SchemaPath;
+    }
+}
+
+export class SourceMap extends MetaInfo{
+    constructor(value:Object){
+        super("sourceMap",value);
+    }
+
+    private static CLASS_IDENTIFIER_SourceMap = "metainfo.SourceMap.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(SourceMap.CLASS_IDENTIFIER_SourceMap);
+    }
+
+    public static isInstance(instance: any): instance is SourceMap {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), SourceMap.CLASS_IDENTIFIER_SourceMap);
+    }
+
+    kind() : tsInterfaces.MetaInformationKind {
+        return tsInterfaces.MetaInformationKind.SourceMap;
+    }
+}
+
+export class ParserMetadata extends MetaInfo{
+    constructor(value:Object){
+        super("__METADATA__",value);
+    }
+
+    kind() : tsInterfaces.MetaInformationKind {
+        return tsInterfaces.MetaInformationKind.ParserMetadata;
+    }
+}
+
+
 export class Discriminator extends ts.TypeInformation{
 
     constructor(public property: string){
@@ -678,6 +748,19 @@ export class Discriminator extends ts.TypeInformation{
 export class DiscriminatorValue extends ts.Constraint{
     constructor(public _value: any, protected strict:boolean=true){
         super(false);
+    }
+
+    private static CLASS_IDENTIFIER_DiscriminatorValue = "metainfo.DiscriminatorValue.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(DiscriminatorValue.CLASS_IDENTIFIER_DiscriminatorValue);
+    }
+
+    public static isInstance(instance: any): instance is DiscriminatorValue {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), DiscriminatorValue.CLASS_IDENTIFIER_DiscriminatorValue);
     }
 
     check(i:any,path:tsInterfaces.IValidationPath):Status{

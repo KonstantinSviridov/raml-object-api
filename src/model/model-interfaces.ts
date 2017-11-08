@@ -7,11 +7,19 @@ export import Facet = tsInterfaces.ITypeFacet;
 export const NodeKindMap:{[key:string]:string} = {
     RAML_KIND_DOCUMENTATION: "Documentation",
     RAML_KIND_API: "Api",
+    RAML_KIND_OVERLAY: "Overlay",
+    RAML_KIND_EXTENSION: "Extension",
     RAML_KIND_RESPONSE: "Response",
     RAML_KIND_METHOD: "Method",
+    NODE_KIND_TRAIT: "Trait",
+    RAML_KIND_BODY: "Body",
+    RAML_KIND_PARAMETER: "Parameter",
     RAML_KIND_LIBRARY: "Library",
-    RAML_KIND_SECURITY_SCHEME_DEFINITION: "SecuritySchemeDefinition",
-    RAML_KIND_RESOURCE: "Resource"
+    RAML_KIND_SECURITY_SCHEME_DEFINITION: "SecurityScheme",
+    RAML_KIND_RESOURCE: "Resource",
+    RAML_KIND_RESOURCE_TYPE: "ResourceType",
+    NODE_KIND_SECURITY_SCHEME_PART: "SecuritySchemePart",
+    NODE_KIND_USES_DECLARATION: "UsesDeclaration"
 };
 
 export interface IAnnotated {
@@ -21,9 +29,16 @@ export interface IAnnotated {
     annotation(name: string): any
 
     scalarsAnnotations():{[key:string]:IAnnotation[][]}
+
+    owningFragment(): IAnnotated
+
+    kind(): string
 }
 
-export interface SecuritySchemeDefinition extends IAnnotated {
+export interface HasSource extends IAnnotated, tsInterfaces.HasSource {
+    metadata():any
+}
+export interface SecuritySchemeDefinition extends HasSource {
 
     name(): string
 
@@ -32,12 +47,14 @@ export interface SecuritySchemeDefinition extends IAnnotated {
     description(): string
 
     settings(): {[name: string]: any}
+
+    describedBy(): SecuritySchemePart;
 }
 
 export type SecuredBy = SecuritySchemeDefinition;
 
 
-export interface Documentation extends IAnnotated {
+export interface Documentation extends HasSource {
     title(): string
     content(): string;
 }
@@ -68,13 +85,44 @@ export interface Api extends LibraryBase {
     baseUriParameters(): Parameter[];
 }
 
-export interface LibraryBase extends IAnnotated,tsInterfaces.IParsedTypeCollection {
+export interface Overlay extends Api {
+
+    extends():string
+
+    usage():string
+}
+
+export interface Extension extends Api {
+
+    extends():string
+
+    usage():string
+}
+
+export interface Fragment extends HasSource{
+    uses(): UsesDeclaration[]
+}
+
+export interface UsesDeclaration extends HasSource{
+
+    key(): string
+
+    path(): string
+
+    usage(): string
+}
+
+export interface LibraryBase extends Fragment,HasSource,tsInterfaces.IParsedTypeCollection {
 
     securitySchemes(): SecuritySchemeDefinition[]
 
     types(): tsInterfaces.IParsedType[]
 
     annotationTypes(): tsInterfaces.IParsedType[]
+
+    traits(): Trait[]
+
+    resourceTypes(): ResourceType[]
 }
 
 
@@ -83,7 +131,7 @@ export interface Library extends LibraryBase {
     usage(): string
 }
 
-export interface ResourceBase extends IAnnotated {
+export interface ResourceBase extends HasSource {
 
     displayName():string
 
@@ -93,27 +141,57 @@ export interface ResourceBase extends IAnnotated {
 
     methods(): Method[]
 
-    owningApi(): Api
-
     uriParameters(): Parameter[];
 
-    allUriParameters(): Parameter[];
+    type():TemplateReference;
+
+    is():TemplateReference[];
 }
 
 export interface Resource extends ResourceBase {
 
-    relativeUrl();
+    relativeUri(): string;
 
-    fullRelativeUrl();
+    completeRelativeUri(): string;
 
-    absoluteUrl();
+    absoluteUri(): string;
+
+    parentUri(): string;
+
+    absoluteParentUri(): string;
 
     parentResource(): Resource
 
     resources(): Resource[]
+
+    relativeUriPathSegments():string[]
+
+    allUriParameters(): Parameter[];
+
+    owningApi(): Api
 }
 
-export interface MethodBase extends IAnnotated {
+export interface ResourceType extends ResourceBase {
+
+    name(): string
+
+    usage(): string
+}
+
+export interface Operation extends HasSource {
+
+    parameters(): Parameter[]; //
+
+    responses(): Response[] //
+}
+
+export interface SecuritySchemePart extends Operation {
+
+}
+
+export interface MethodBase extends Operation {
+
+    name(): string
 
     securedBy(): SecuredBy[]
 
@@ -121,13 +199,11 @@ export interface MethodBase extends IAnnotated {
 
     description(): string //
 
-    parameters(): Parameter[]; //
-
     bodies(): Body[]; //
 
-    responses(): Response[] //
-
     protocols():string[]
+
+    is():TemplateReference[];
 }
 
 export interface Method extends MethodBase {
@@ -137,7 +213,12 @@ export interface Method extends MethodBase {
     resource(): Resource //
 }
 
-export interface Response extends IAnnotated {
+export interface Trait extends MethodBase {
+
+    usage(): string
+}
+
+export interface Response extends HasSource {
 
     code(): string //
 
@@ -168,3 +249,18 @@ export interface Body extends IAnnotated {
     type(): tsInterfaces.IParsedType //
 }
 
+export interface TemplateReference{
+
+    name(): string
+
+    parameters(): {
+        name: string
+        value: any
+    }[]
+}
+
+export interface ResourceTypeFragment extends ResourceType, Fragment{}
+
+export interface TraitFragment extends Trait, Fragment{}
+
+export interface SecuritySchemeFragment extends SecuritySchemeDefinition, Fragment{}

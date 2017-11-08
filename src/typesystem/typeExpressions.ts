@@ -3,6 +3,7 @@ import schemaUtil = require('./schemaUtil')
 import {ComponentShouldBeOfType} from "./restrictions";
 import {ParseNode} from "./parse";
 import typeExpressionDefs = require("raml-typeexpressions-parser")
+import meta = require("./metainfo");
 
 export type BaseNode = typeExpressionDefs.BaseNode;
 export type Union = typeExpressionDefs.Union;
@@ -22,6 +23,11 @@ export function parseToType(val:string,t:ts.TypeRegistry, contentProvidingNode?:
 
                 let typeChild = contentProvidingNode;
                 let n:ParseNode;
+                let schemaPath:string;
+                let sPathNode = contentProvidingNode.childWithKey("schemaPath");
+                if(sPathNode){
+                    schemaPath = sPathNode.value();
+                }
                 do {
                     n = typeChild;
                     typeChild = n.childWithKey("type");
@@ -30,8 +36,11 @@ export function parseToType(val:string,t:ts.TypeRegistry, contentProvidingNode?:
 
                 let contentProvider: schemaUtil.IContentProvider =
                     n && (<any>n).contentProvider && (<any>n).contentProvider();
-
-                return new ts.ExternalType("", q, json, contentProvider, typeAttributeContentProvider);
+                const result = new ts.ExternalType("", q, json, contentProvider, typeAttributeContentProvider);
+                if(schemaPath){
+                    result.addMeta(new meta.SchemaPath(schemaPath));
+                }
+                return result;
             }
 
             var node:BaseNode = parse(val);

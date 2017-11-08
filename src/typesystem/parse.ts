@@ -18,7 +18,7 @@ import {ComponentShouldBeOfType} from "./restrictions";
 import su = require("./schemaUtil")
 import {KnownPropertyRestriction} from "./restrictions";
 import {IParsedTypeCollection} from "../typesystem-interfaces/typesystem-interfaces";
-
+import _ = require("underscore");
 
 
 export enum NodeKind{
@@ -128,7 +128,7 @@ export class PropertyBean{
         }
 
         else if (this.regExp){
-            matchesPropertyFacet = new rs.MapPropertyIs(this.id,this.type);
+            matchesPropertyFacet = new rs.MapPropertyIs(this.id,this.type,this.optional);
         }
         else{
             matchesPropertyFacet = new rs.PropertyIs(this.id,this.type,this.optional);
@@ -192,7 +192,7 @@ export class TypeCollection {
     }
 
     getAnnotationTypeRegistry():TypeRegistry{
-        var r=new TypeRegistry(ts.builtInRegistry());
+        var r=new TypeRegistry(ts.builtInRegistry(),this,true);
         this.annotationTypes().forEach(x=>r.addType(x));
         Object.keys(this.uses).forEach(x=>{
             this.uses[x].annotationTypes().forEach(y=>r.put(x+"."+ y.name(),y));
@@ -200,7 +200,7 @@ export class TypeCollection {
         return r;
     }
     getTypeRegistry():TypeRegistry{
-        var r=new TypeRegistry(ts.builtInRegistry());
+        var r=new TypeRegistry(ts.builtInRegistry(),this);
         this.types().forEach(x=>r.addType(x));
 
         Object.keys(this.uses).forEach(x=>{
@@ -212,9 +212,20 @@ export class TypeCollection {
 
 export class AccumulatingRegistry extends ts.TypeRegistry{
 
+    private static CLASS_IDENTIFIER_AccumulatingRegistry = "parse.AccumulatingRegistry.lite";
 
-    constructor(private toParse:ParseNode,private schemas:ParseNode,ts:ts.TypeRegistry,private _c:TypeCollection){
-        super(ts)
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(AccumulatingRegistry.CLASS_IDENTIFIER_AccumulatingRegistry);
+    }
+
+    public static isInstance(instance : any) : instance is AccumulatingRegistry {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(),AccumulatingRegistry.CLASS_IDENTIFIER_AccumulatingRegistry);
+    }
+    constructor(private toParse:ParseNode,private schemas:ParseNode,ts:ts.TypeRegistry,protected _c:TypeCollection){
+        super(ts,_c)
     }
 
 
@@ -393,7 +404,7 @@ export function parsePropertyBean(n:ParseNode,tr:ts.TypeRegistry,c:IParsedTypeCo
     var result=new PropertyBean();
     var hasRequiredFacet = false;
     var rs=n.childWithKey("required");
-    const key = n.key() || n.childWithKey("name").value();
+    const key = n.key() || (n.childWithKey("name")&&n.childWithKey("name").value());
     if (rs){
         var rsValue = rs.value();
         if (typeof rsValue=="boolean"){
@@ -409,7 +420,7 @@ export function parsePropertyBean(n:ParseNode,tr:ts.TypeRegistry,c:IParsedTypeCo
         name=name.substr(0,name.length-1);
         result.optional=true;
     }
-    if (name.length==0||name==='/.*/'){
+    if (name != null && name.length==0||name==='/.*/'){
         result.additonal=true;
 
     }
@@ -418,6 +429,25 @@ export function parsePropertyBean(n:ParseNode,tr:ts.TypeRegistry,c:IParsedTypeCo
         result.regExp=true;
     }
     result.type = parse(null, n,tr,false,false,false,false,c);
+
+    let filterOut = [ "type","typePropertyKind","schema,","sourceMap", "__METADATA__", "required", "notScalar" ];
+    if(!result.type.isBuiltin()) {
+        const nonDefaultMeta = result.type.declaredFacets().filter(x => {
+            if (filterOut.indexOf(x.facetName()) >= 0) {
+                return false;
+            }
+            if (meta.DisplayName.isInstance(x)) {
+                return x.value() != name;
+            }
+            if (meta.DiscriminatorValue.isInstance(x)) {
+                return x.isStrict();
+            }
+            return true;
+        });
+        if (!nonDefaultMeta.length && result.type.superTypes().length == 1) {
+            result.type = result.type.superTypes()[0];
+        }
+    }
     result.id=name;
     return result;
 }
@@ -492,7 +522,7 @@ export class TypeProto{
                     nm="/.*/"
                 }
                 if (x.regExp){
-                    nm="/"+nm+"/";
+                    nm="/"+x.id+"/";
                 }
                 var vl:any=null;
                 if (x.type.isAnonymous()){
@@ -571,20 +601,23 @@ export function toProto(type:AbstractType):TypeProto{
 
                 var pbean=new PropertyBean();
                 pbean.optional=false;
-                pbean.id= "/.*/";
+                pbean.id= ".*";
                 pbean.additonal=true;
                 pbean.type= x.value();
+                pbean.optional = x.isOptional();
+                pbean.regExp=true;
                 pmap['/.*/']=pbean;
             }
-            else if (x instanceof rs.MapPropertyIs){
+            else if (rs.MapPropertyIs.isInstance(x)){
                 var pbean=new PropertyBean();
                 pbean.optional=false;
                 pbean.id= x.regexpValue();
                 pbean.regExp=true;
                 pbean.type= x.value();
+                pbean.optional = x.isOptional();
                 pmap[x.regexpValue()]=pbean;
             }
-            else if (x instanceof rs.PropertyIs){
+            else if (rs.PropertyIs.isInstance(x)){
                 if (pmap.hasOwnProperty(x.propertyName())){
                     pmap[x.propertyName()].type= x.value();
                 }
@@ -596,15 +629,15 @@ export function toProto(type:AbstractType):TypeProto{
                     pmap[x.propertyName()]=pbean;
                 }
             }
-            else if (x instanceof rs.KnownPropertyRestriction) {
+            else if (rs.KnownPropertyRestriction.isInstance(x)) {
                 result.additionalProperties = x.value();
             }
-            else if(x instanceof meta.DiscriminatorValue){
+            else if(meta.DiscriminatorValue.isInstance(x)){
                 if((<meta.DiscriminatorValue>x).isStrict()){
                     result.basicFacets.push(x);
                 }
             }
-            else if(!(x instanceof meta.HasPropertiesFacet)) {
+            else if(!meta.HasPropertiesFacet.isInstance(x)) {
                 result.basicFacets.push(x);
             }
         }
@@ -749,7 +782,7 @@ export function parseJsonTypeWithCollection(
     annotation:boolean=false,
     global:boolean=true,
     ignoreTypeAttr:boolean=false):ts.AbstractType{
-    let res=parse(name,new JSObjectNode(null,n, false, null),<ts.TypeRegistry>r.getTypeRegistry(),defaultsToAny,annotation,global,ignoreTypeAttr,r);
+    let res=parse(name,new JSObjectNode(null,n, false, null),<ts.TypeRegistry>(r&&r.getTypeRegistry()),defaultsToAny,annotation,global,ignoreTypeAttr,r);
     (<any>res)._collection=r;
     return res;
 }
@@ -859,7 +892,8 @@ function parse(
             else{
                 var typeAttributeContentProvider : su.IContentProvider =
                     (<any>tp).contentProvider ? (<any>tp).contentProvider() : null;
-                superTypes=[typeExpressions.parseToType(""+valString,r, n, typeAttributeContentProvider)];
+                const st = typeExpressions.parseToType(""+valString,r, n, typeAttributeContentProvider);
+                superTypes=[st];
             }
         }
         else if (tp.kind()==NodeKind.ARRAY){
@@ -919,7 +953,25 @@ function parse(
                 }
                 return parsedOption;
             });
-            result = ts.union(name,opts);
+            if(n.childWithKey("properties")){
+                superTypes = [ ts.union(name,opts) ];
+            }
+            else{
+                let filterOut = [ "type","typePropertyKind","schema,","sourceMap", "__METADATA__", "required", "displayName", "example", "examples" ];
+                const meta = n.children().filter(x=>{
+                    if(filterOut.indexOf(x.key())>=0){
+                        return false;
+                    }
+                    let f = facetR.getInstance().buildFacet(x.key(), x.value());
+                    return f != null;
+                });
+                // if(meta.length){
+                    superTypes = [ ts.union(name,opts) ];
+                // }
+                // else {
+                //     result = ts.union(name, opts);
+                // }
+            }
         }
     }
     if (superTypes.length==1&&superTypes[0].isAnonymous()&&false){
@@ -934,7 +986,7 @@ function parse(
         var aArr1:tsInterfaces.IAnnotation[] = typePropAnnotations[i];
         result.addSupertypeAnnotation(aArr1,i);
     }
-    if (r instanceof AccumulatingRegistry){
+    if (AccumulatingRegistry.isInstance(r)){
         result = contributeToAccumulatingRegistry(<any>result, r);
     }
     var actualResult=result;
@@ -1039,11 +1091,11 @@ function parse(
                 result.addMeta(appendedInfo);
             }
             else {
-                if (annotation && key === "allowedTargets") {
-                    result.addMeta(new meta.AllowedTargets(x.value()));
-                }
-                else {
-                    if(key!="name"&&key!="simplifiedExamples") {
+                // if (annotation && key === "allowedTargets") {
+                //     result.addMeta(new meta.AllowedTargets(x.value()));
+                // }
+                {//else {
+                    if(key!="name"&&key!="simplifiedExamples"&&key!="anyOf") {
                         var customFacet = new meta.CustomFacet(key, x.value());
                         customFacet.setNode(x);
                         result.addMeta(customFacet);
@@ -1110,7 +1162,8 @@ function parse(
     }
     if (result.isAnonymous()&&result.isEmpty()){
         if (result.superTypes().length==1){
-            return result.superTypes()[0];
+            let res = result.superTypes()[0];
+            return res;
         }
     }
     if (n.kind()!=NodeKind.SCALAR){
@@ -1147,3 +1200,7 @@ function contributeToAccumulatingRegistry(result:ts.InheritedType,r:TypeRegistry
     result.putExtra(tsInterfaces.TOP_LEVEL_EXTRA, true);
     return result;
 };
+
+export function builtInTypes():tsInterfaces.ITypeRegistry {
+    return ts.builtInRegistry();
+}
