@@ -51,9 +51,6 @@ function normalizeType(i: datamodel.TypeReference10) {
         }
         let t = <datamodel.TypeDeclaration>i;
         let res: any = JSON.parse(JSON.stringify(t));
-        if(res.name==res.displayName){
-            delete res.displayName;
-        }
         delete res.name;
         delete res.typePropertyKind;
         delete res.annotations;
@@ -122,7 +119,33 @@ function normalizeType(i: datamodel.TypeReference10) {
                 res[x.name] = x.value;
             }
         }
+        removeDefaults(res,t);
         return res;
+    }
+}
+
+const redundantMetaNames = {
+    "displayName": true,
+    "required": true,
+};
+
+function removeDefaults(result:Object,t:datamodel.TypeDeclaration){
+    let meta = t.__METADATA__;
+    if(!meta){
+        return;
+    }
+    let scalarsMeta = meta.primitiveValuesMeta;
+    if(!scalarsMeta){
+        return;
+    }
+    for(let pName of Object.keys(scalarsMeta).filter(x=>redundantMetaNames[x])){
+        let sMeta = scalarsMeta[pName];
+        if(sMeta.calculated||sMeta.insertedAsDefault){
+            if(pName=="displayName"&&t.name&&t.displayName&&t.name!=t.displayName){
+                continue;
+            }
+            delete result[pName];
+        }
     }
 }
 
@@ -555,13 +578,15 @@ function bodies(t: MethodBase<any>|Response) {
         let name = x.name;
         let td = normalizeType(x);
         let parsedType = ts.parseJsonTypeWithCollection("", td, <any>t.owningFragment(), true);
-        result.push(new Body(name, parsedType, t));
+        let meta:any;
+        if(!parsedType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata).length){
+            meta = x.__METADATA__;
+        }
+        result.push(new Body(name, parsedType, t, meta));
     }
     return result;
 }
-function isRequired(parsedType: ti.IParsedType) {
-    return parsedType.allFacets().some(x => x.kind() == ti.MetaInformationKind.Required && x.value());
-}
+
 function params(v: datamodel.TypeDeclaration[], parent: Proxy<any>, location: string) {
 
     let result: Parameter[] = [];
@@ -569,7 +594,12 @@ function params(v: datamodel.TypeDeclaration[], parent: Proxy<any>, location: st
         for( let x of v){
             let td = normalizeType(x);
             let parsedType = ts.parseJsonTypeWithCollection("", td, <any>parent.owningFragment(), false);
-            result.push(new Parameter(x.name, parsedType, isRequired(parsedType), location, parent));
+            let required = x.required;
+            let meta:any;
+            if(!parsedType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata).length){
+                meta = x.__METADATA__;
+            }
+            result.push(new Parameter(x.name, parsedType, required, location, parent,meta));
         }
     }
     return result;
@@ -602,7 +632,7 @@ export class Response extends Proxy<methods.Response10> implements raml.Response
 }
 export class Body extends Annotated implements raml.Body {
 
-    constructor(private mime: string, private p: ti.IParsedType, private owner:raml.MethodBase|raml.Response) {
+    constructor(private mime: string, private p: ti.IParsedType, private owner:raml.MethodBase|raml.Response, private _meta?:any) {
         super()
     }
 
@@ -629,10 +659,14 @@ export class Body extends Annotated implements raml.Body {
     kind(){
         return raml.NodeKindMap.RAML_KIND_BODY;
     }
+
+    meta(){
+        return this._meta;
+    }
 }
 export class Parameter extends  Annotated implements raml.Parameter {
 
-    constructor(private mime: string, private p: ti.IParsedType, private req: boolean, private loc: string, private owner:raml.IAnnotated) {
+    constructor(private mime: string, private p: ti.IParsedType, private req: boolean, private loc: string, private owner:raml.IAnnotated, private _meta?:any) {
         super();
     }
 
@@ -667,6 +701,10 @@ export class Parameter extends  Annotated implements raml.Parameter {
     kind(){
         return raml.NodeKindMap.RAML_KIND_PARAMETER;
     }
+
+    meta():any{
+        return this._meta;
+    }
 }
 
 export abstract class Operation<T extends methods.Operation10> extends Proxy<T> implements raml.Operation {
@@ -679,7 +717,8 @@ export abstract class Operation<T extends methods.Operation10> extends Proxy<T> 
         if (this.json.queryString) {
             let td = normalizeType(this.json.queryString);
             let parsedType = ts.parseJsonTypeWithCollection("", td, <any>this.owningFragment(), false);
-            initial.push(new Parameter("queryString", parsedType, isRequired(parsedType), "queryString", this));
+            let required = this.json.queryString.required;
+            initial.push(new Parameter("queryString", parsedType, required, "queryString", this));
         }
         return initial;
     }
@@ -730,7 +769,8 @@ export abstract class MethodBase<T extends methods.MethodBase10> extends Operati
         if (this.json.queryString) {
             let td = normalizeType(this.json.queryString);
             let parsedType = ts.parseJsonTypeWithCollection("", td, <any>this.owningFragment(), false);
-            initial.push(new Parameter("queryString", parsedType, isRequired(parsedType), "queryString", this));
+            let required = this.json.queryString.required;
+            initial.push(new Parameter("queryString", parsedType, required, "queryString", this));
         }
         return initial;
     }

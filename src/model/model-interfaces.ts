@@ -240,6 +240,8 @@ export interface Parameter extends IAnnotated {
     type(): tsInterfaces.IParsedType //
 
     location(): string //
+
+    meta():any
 }
 
 export interface Body extends IAnnotated {
@@ -247,6 +249,8 @@ export interface Body extends IAnnotated {
     mimeType(): string //
 
     type(): tsInterfaces.IParsedType //
+
+    meta():any
 }
 
 export interface TemplateReference{

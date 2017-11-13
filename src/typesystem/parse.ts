@@ -430,14 +430,11 @@ export function parsePropertyBean(n:ParseNode,tr:ts.TypeRegistry,c:IParsedTypeCo
     }
     result.type = parse(null, n,tr,false,false,false,false,c);
 
-    let filterOut = [ "type","typePropertyKind","schema,","sourceMap", "__METADATA__", "required", "notScalar" ];
-    if(!result.type.isBuiltin()) {
+    let filterOut = [ "typePropertyKind","sourceMap", "required", "notScalar" ];
+    if(!result.type.isBuiltin()&&!result.type.name()) {
         const nonDefaultMeta = result.type.declaredFacets().filter(x => {
             if (filterOut.indexOf(x.facetName()) >= 0) {
                 return false;
-            }
-            if (meta.DisplayName.isInstance(x)) {
-                return x.value() != name;
             }
             if (meta.DiscriminatorValue.isInstance(x)) {
                 return x.isStrict();
@@ -445,7 +442,14 @@ export function parsePropertyBean(n:ParseNode,tr:ts.TypeRegistry,c:IParsedTypeCo
             return true;
         });
         if (!nonDefaultMeta.length && result.type.superTypes().length == 1) {
+            let meta = result.type.meta();
             result.type = result.type.superTypes()[0];
+            if(!result.type.isBuiltin()){
+                let metaMap: { [key: string]: boolean } = {};
+                metaMap[tsInterfaces.MetaInformationKind.Required] = true;
+                result.type.meta().forEach(x => metaMap[x.kind()] = true);
+                meta.filter(x => !metaMap[x.kind()]).forEach(x => result.type.addMeta(x));
+            }
         }
     }
     result.id=name;
@@ -957,7 +961,7 @@ function parse(
                 superTypes = [ ts.union(name,opts) ];
             }
             else{
-                let filterOut = [ "type","typePropertyKind","schema,","sourceMap", "__METADATA__", "required", "displayName", "example", "examples" ];
+                let filterOut = [ "type","typePropertyKind","schema,","sourceMap", "__METADATA__", "required", "example", "examples" ];
                 const meta = n.children().filter(x=>{
                     if(filterOut.indexOf(x.key())>=0){
                         return false;
@@ -965,12 +969,12 @@ function parse(
                     let f = facetR.getInstance().buildFacet(x.key(), x.value());
                     return f != null;
                 });
-                // if(meta.length){
-                    superTypes = [ ts.union(name,opts) ];
-                // }
-                // else {
-                //     result = ts.union(name, opts);
-                // }
+                if(meta.length){
+                    superTypes = [ ts.union("",opts) ];
+                }
+                else {
+                     result = ts.union(name, opts);
+                }
             }
         }
     }
@@ -1162,7 +1166,13 @@ function parse(
     }
     if (result.isAnonymous()&&result.isEmpty()){
         if (result.superTypes().length==1){
+            let meta = result.meta();
             let res = result.superTypes()[0];
+            if(!res.isBuiltin()){
+                let metaMap:{[key:string]:boolean} = {};
+                res.meta().forEach(x=>metaMap[x.kind()]=true);
+                meta.filter(x=>!metaMap[x.kind()]).forEach(x=>res.addMeta(x));
+            }
             return res;
         }
     }

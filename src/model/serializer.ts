@@ -1,7 +1,5 @@
 import raml = require("./model-interfaces");
-import index = require("../index");
-import ts = index.typesystem;
-import ti = ts.tsInterfaces;
+import ti = require("../typesystem-interfaces/typesystem-interfaces");
 import api = require("../typings-new-format/spec-1.0/api");
 import datamodel = require("../typings-new-format/spec-1.0/datamodel");
 import resources = require("../typings-new-format/spec-1.0/resources");
@@ -153,17 +151,52 @@ export class JsonSerializer{
     }
 
     serializeParameter(x:raml.Parameter):datamodel.TypeDeclaration {
-        let t = this.serializeTypeDeclaration(x.type(),false);
-        const name = x.name();
-        if(!t.name){
-            t.name = name;
+        const paramName = x.name();
+        const bodyType = x.type();
+        if(bodyType.name()&&this.recursionDepth<0){
+            const result:any = {
+                name: paramName,
+                displayName: paramName,
+                type: [ bodyType.name() ],
+                required: x.required(),
+                typePropertyKind: "TYPE_EXPRESSION",
+                __METADATA__: {
+                    primitiveValuesMeta: {
+                        displayName: {
+                            calculated: true
+                        }
+                    }
+                }
+            };
+            if(x.meta()){
+                result.__METADATA__ = x.meta();
+            }
+            // if(bodyType.name().indexOf(">>")>0) {
+            //     bodyType.allFacets().forEach(x => {
+            //         if (x.kind() == ti.MetaInformationKind.ParserMetadata
+            //             || x.kind() == ti.MetaInformationKind.SourceMap) {
+            //             result[x.facetName()] = x.value();
+            //         }
+            //     });
+            // }
+            return result
         }
-        else if (t.name != name) {
-            t = {
-                name: name,
-                displayName: name,
+        let t = this.serializeTypeDeclaration(bodyType,false);
+        if(!t.name){
+            t.name = paramName;
+        }
+        else if (t.name != paramName) {
+            t = <any>{
+                name: paramName,
                 type: [t]
             }
+        }
+        if(t.displayName==null){
+            t.displayName = t.name;
+        }
+        t.required = x.required();
+        if(x.meta()){
+            t.__METADATA__ = x.meta();
         }
         return t;
     }
@@ -206,17 +239,50 @@ export class JsonSerializer{
     }
 
     serializeBody(x:raml.Body):datamodel.TypeDeclaration {
-        let t = this.serializeTypeDeclaration(x.type());
-        const name = x.mimeType();
-        if(!t.name){
-            t.name = name;
+        const mimeType = x.mimeType();
+        const bodyType = x.type();
+        if(bodyType.name()&&this.recursionDepth<0){
+            const result:any = {
+                name: mimeType,
+                displayName: mimeType,
+                type: [ bodyType.name() ],
+                typePropertyKind: "TYPE_EXPRESSION",
+                __METADATA__: {
+                    primitiveValuesMeta: {
+                        displayName: {
+                            calculated: true
+                        }
+                    }
+                }
+            };
+            let typeMeta = bodyType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata);
+            if(x.meta()){
+                result.__METADATA__ = x.meta();
+            }
+            else if(bodyType.name().indexOf("<<")>=0&&typeMeta.length){
+                result.__METADATA__ = typeMeta[0].value();
+            }
+            // if(bodyType.name().indexOf(">>")>0) {
+            //     bodyType.allFacets().forEach(x => {
+            //         if (x.kind() == ti.MetaInformationKind.SourceMap) {
+            //             result[x.facetName()] = x.value();
+            //         }
+            //     });
+            // }
+            return result
         }
-        else if (t.name != name) {
-            t = {
-                name: name,
-                displayName: name,
+        let t = this.serializeTypeDeclaration(bodyType);
+        if(!t.name){
+            t.name = mimeType;
+        }
+        else if (t.name != mimeType) {
+            t = <any>{
+                name: mimeType,
                 type: [t]
             }
+        }
+        if(t.displayName==null){
+            t.displayName = t.name;
         }
         return t;
     }
