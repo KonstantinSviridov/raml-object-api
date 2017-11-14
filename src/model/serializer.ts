@@ -505,7 +505,7 @@ export class JsonSerializer{
     }
 
     serializeTypeDeclaration(node:ti.IParsedType,isAnnotaionType=false):datamodel.TypeDeclaration{
-        return typeExpander.dumpType(node,this.recursionDepth,isAnnotaionType);
+        return new typeExpander.TypeExpander().serializeType(node,this.recursionDepth,isAnnotaionType);
     }
 
     serializeTemplateReference(node:raml.TemplateReference):methods.TemplateReference{
