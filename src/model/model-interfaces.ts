@@ -3,23 +3,37 @@ import ts = index.typesystem;
 import tsInterfaces = ts.tsInterfaces;
 export import IAnnotation=tsInterfaces.IAnnotation;
 export import Facet = tsInterfaces.ITypeFacet;
+import common = require("../typings-new-format/spec-1.0/common");
 
 export const NodeKindMap:{[key:string]:string} = {
-    RAML_KIND_DOCUMENTATION: "Documentation",
-    RAML_KIND_API: "Api",
-    RAML_KIND_OVERLAY: "Overlay",
-    RAML_KIND_EXTENSION: "Extension",
-    RAML_KIND_RESPONSE: "Response",
-    RAML_KIND_METHOD: "Method",
+    NODE_KIND_DOCUMENTATION: "Documentation",
+    NODE_KIND_API: "Api",
+    NODE_KIND_OVERLAY: "Overlay",
+    NODE_KIND_EXTENSION: "Extension",
+    NODE_KIND_RESPONSE: "Response",
+    NODE_KIND_METHOD: "Method",
     NODE_KIND_TRAIT: "Trait",
-    RAML_KIND_BODY: "Body",
-    RAML_KIND_PARAMETER: "Parameter",
-    RAML_KIND_LIBRARY: "Library",
-    RAML_KIND_SECURITY_SCHEME_DEFINITION: "SecurityScheme",
-    RAML_KIND_RESOURCE: "Resource",
-    RAML_KIND_RESOURCE_TYPE: "ResourceType",
+    NODE_KIND_BODY: "Body",
+    NODE_KIND_PARAMETER: "Parameter",
+    NODE_KIND_LIBRARY: "Library",
+    NODE_KIND_SECURITY_SCHEME_DEFINITION: "SecurityScheme",
+    NODE_KIND_RESOURCE: "Resource",
+    NODE_KIND_RESOURCE_TYPE: "ResourceType",
     NODE_KIND_SECURITY_SCHEME_PART: "SecuritySchemePart",
-    NODE_KIND_USES_DECLARATION: "UsesDeclaration"
+    NODE_KIND_USES_DECLARATION: "UsesDeclaration",
+    NODE_KIND_TYPE_DECLARATION: "TypeDeclaration",
+    NODE_KIND_EXAMPLE_SPEC: "ExampleSpec",
+    NODE_KIND_API_08: "Api08",
+    NODE_KIND_RESPONSE_08: "Response08",
+    NODE_KIND_METHOD_08: "Method08",
+    NODE_KIND_TRAIT_08: "Trait08",
+    NODE_KIND_BODYLIKE_08: "BodyLike08",
+    NODE_KIND_PARAMETER_08: "Parameter08",
+    NODE_KIND_SECURITY_SCHEME_DEFINITION_08: "SecurityScheme08",
+    NODE_KIND_RESOURCE_08: "Resource08",
+    NODE_KIND_RESOURCE_TYPE_08: "ResourceType08",
+    NODE_KIND_SECURITY_SCHEME_PART_08: "SecuritySchemePart08",
+    NODE_KIND_GLOBAL_SCHEMA_08: "GlobalSchema08"
 };
 
 export interface IAnnotated {
@@ -35,10 +49,21 @@ export interface IAnnotated {
     kind(): string
 }
 
-export interface HasSource extends IAnnotated, tsInterfaces.HasSource {
+export interface HasSource10 extends IAnnotated, tsInterfaces.HasSource {
     metadata():any
 }
-export interface SecuritySchemeDefinition extends HasSource {
+
+export interface HasSource08 extends tsInterfaces.HasSource {
+    metadata():any
+
+    kind():string
+
+    allowParametrizedKeys():boolean
+
+    parametrizedPart():any
+}
+
+export interface SecuritySchemeDefinition10 extends HasSource10 {
 
     name(): string
 
@@ -48,17 +73,36 @@ export interface SecuritySchemeDefinition extends HasSource {
 
     settings(): {[name: string]: any}
 
-    describedBy(): SecuritySchemePart;
+    describedBy(): SecuritySchemePart10;
 }
 
-export type SecuredBy = SecuritySchemeDefinition;
+export interface SecuritySchemeDefinition08 extends HasSource08{
+
+    name(): string
+
+    type(): string
+
+    description(): string
+
+    describedBy(): SecuritySchemePart08
+
+    settings(): Object
+}
+
+export type SecuredBy = SecuritySchemeDefinition10;
+
+export type SecuredBy08 = SecuritySchemeDefinition08;
 
 
-export interface Documentation extends HasSource {
+export interface Documentation10 extends HasSource10 {
     title(): string
     content(): string;
 }
-export interface Api extends LibraryBase {
+export interface Documentation08 extends HasSource08 {
+    title(): string
+    content(): string;
+}
+export interface Api10 extends LibraryBase {
 
     title(): string
 
@@ -68,13 +112,13 @@ export interface Api extends LibraryBase {
 
     description(): string
 
-    documentation(): Documentation[]
+    documentation(): Documentation10[]
 
-    resources(): Resource[]
+    resources(): Resource10[]
 
-    allResources(): Resource[]
+    allResources(): Resource10[]
 
-    allMethods(): Method[];
+    allMethods(): Method10[];
 
     securedBy(): SecuredBy[]
 
@@ -82,28 +126,61 @@ export interface Api extends LibraryBase {
 
     mediaType(): string[]
 
-    baseUriParameters(): Parameter[];
+    baseUriParameters(): Parameter10[];
 }
 
-export interface Overlay extends Api {
+export interface Api08 extends HasSource08 {
+
+    title(): string
+
+    version(): string
+
+    baseUri(): string
+
+    baseUriParameters(): Parameter08[]
+
+    protocols(): string[]
+
+    mediaType(): string
+
+    schemas(): GlobalSchema[]
+
+    traits(): Trait08[]
+
+    securedBy(): SecuritySchemeDefinition08[]
+
+    securitySchemes(): SecuritySchemeDefinition08[]
+
+    resourceTypes(): ResourceType08[]
+
+    resources(): Resource08[]
+
+    documentation(): Documentation08[]
+
+    errors():common.Error[]
+}
+
+export interface Overlay extends Api10 {
 
     extends():string
 
     usage():string
 }
 
-export interface Extension extends Api {
+export interface Extension extends Api10 {
 
     extends():string
 
     usage():string
 }
 
-export interface Fragment extends HasSource{
+export interface Fragment extends HasSource10{
     uses(): UsesDeclaration[]
+
+    errors():common.Error[]
 }
 
-export interface UsesDeclaration extends HasSource{
+export interface UsesDeclaration extends HasSource10{
 
     key(): string
 
@@ -112,17 +189,17 @@ export interface UsesDeclaration extends HasSource{
     usage(): string
 }
 
-export interface LibraryBase extends Fragment,HasSource,tsInterfaces.IParsedTypeCollection {
+export interface LibraryBase extends Fragment,HasSource10,tsInterfaces.IParsedTypeCollection {
 
-    securitySchemes(): SecuritySchemeDefinition[]
+    securitySchemes(): SecuritySchemeDefinition10[]
 
     types(): tsInterfaces.IParsedType[]
 
     annotationTypes(): tsInterfaces.IParsedType[]
 
-    traits(): Trait[]
+    traits(): Trait10[]
 
-    resourceTypes(): ResourceType[]
+    resourceTypes(): ResourceType10[]
 }
 
 
@@ -131,7 +208,7 @@ export interface Library extends LibraryBase {
     usage(): string
 }
 
-export interface ResourceBase extends HasSource {
+export interface ResourceBase10 extends HasSource10 {
 
     displayName():string
 
@@ -139,16 +216,35 @@ export interface ResourceBase extends HasSource {
 
     securedBy(): SecuredBy[]
 
-    methods(): Method[]
+    methods(): Method10[]
 
-    uriParameters(): Parameter[];
+    uriParameters(): Parameter10[];
 
     type():TemplateReference;
 
     is():TemplateReference[];
 }
 
-export interface Resource extends ResourceBase {
+export interface ResourceBase08 extends HasSource08{
+
+    is(): TemplateReference[]
+
+    type(): TemplateReference
+
+    securedBy(): SecuredBy08[]
+
+    uriParameters(): Parameter08[]
+
+    displayName(): string
+
+    baseUriParameters(): Parameter08[]
+
+    description(): string
+
+    methods(): Method08[]
+}
+
+export interface Resource10 extends ResourceBase10 {
 
     relativeUri(): string;
 
@@ -160,36 +256,71 @@ export interface Resource extends ResourceBase {
 
     absoluteParentUri(): string;
 
-    parentResource(): Resource
+    parentResource(): Resource10
 
-    resources(): Resource[]
+    resources(): Resource10[]
 
     relativeUriPathSegments():string[]
 
-    allUriParameters(): Parameter[];
+    allUriParameters(): Parameter10[];
 
-    owningApi(): Api
+    owningApi(): Api10
 }
 
-export interface ResourceType extends ResourceBase {
+export interface Resource08 extends ResourceBase08{
+
+    relativeUri():string
+
+    relativeUriPathSegments(): string[]
+
+    resources(): Resource08[]
+
+    absoluteUri(): string
+
+    completeRelativeUri(): string
+
+    parentUri(): string
+
+    absoluteParentUri(): string
+
+    parentResource():Resource08
+
+    owningApi():Api08
+
+    allUriParameters():Parameter08[]
+}
+
+export interface ResourceType10 extends ResourceBase10 {
 
     name(): string
 
     usage(): string
 }
 
-export interface Operation extends HasSource {
+export interface ResourceType08 extends ResourceBase08 {
 
-    parameters(): Parameter[]; //
+    name(): string
 
-    responses(): Response[] //
+    usage(): string
 }
 
-export interface SecuritySchemePart extends Operation {
+export interface Operation extends HasSource10 {
+
+    parameters(): Parameter10[]; //
+
+    responses(): Response10[] //
+}
+
+export interface SecuritySchemePart10 extends Operation {
 
 }
 
-export interface MethodBase extends Operation {
+export interface SecuritySchemePart08 extends MethodBase08{
+
+    is(): TemplateReference[]
+}
+
+export interface MethodBase10 extends Operation {
 
     name(): string
 
@@ -199,39 +330,85 @@ export interface MethodBase extends Operation {
 
     description(): string //
 
-    bodies(): Body[]; //
+    bodies(): Body10[]; //
 
     protocols():string[]
 
     is():TemplateReference[];
 }
 
-export interface Method extends MethodBase {
+export interface MethodBase08 extends HasSource08 {
 
-    method(): string //
+    responses(): Response08[]
 
-    resource(): Resource //
-}
+    body(): BodyLike08[]
 
-export interface Trait extends MethodBase {
+    protocols(): string[]
 
-    usage(): string
-}
+    securedBy(): SecuritySchemeDefinition08[]
 
-export interface Response extends HasSource {
-
-    code(): string //
-
-    headers(): Parameter[] //
-
-    bodies(): Body[] //
-
-    method(): Method //
+    parameters(): Parameter08[]
 
     description(): string
 }
 
-export interface Parameter extends IAnnotated {
+export interface Method10 extends MethodBase10 {
+
+    method(): string //
+
+    resource(): Resource10 //
+}
+
+export interface Method08 extends MethodBase08{
+
+    method(): string
+
+    resource(): Resource08
+
+    is(): TemplateReference[]
+}
+
+export interface Trait10 extends MethodBase10 {
+
+    usage(): string
+}
+
+export interface Trait08 extends MethodBase08{
+
+    name(): string
+
+    usage(): string
+
+    displayName(): string
+}
+
+export interface Response10 extends HasSource10 {
+
+    code(): string //
+
+    headers(): Parameter10[] //
+
+    bodies(): Body10[] //
+
+    method(): Method10 //
+
+    description(): string
+}
+
+export interface Response08 extends HasSource08 {
+
+    code(): string //
+
+    headers(): Parameter08[] //
+
+    bodies(): BodyLike08[] //
+
+    method(): Method08 //
+
+    description(): string
+}
+
+export interface Parameter10 extends IAnnotated {
 
     name(): string  //
 
@@ -244,13 +421,64 @@ export interface Parameter extends IAnnotated {
     meta():any
 }
 
-export interface Body extends IAnnotated {
+export interface Parameter08 extends HasSource08 {
+
+    name(): string
+
+    required(): boolean
+
+    type(): string
+
+    location(): string
+
+    displayName():string
+
+    default(): any
+
+    example(): string
+
+    repeat(): boolean
+
+    description(): string
+
+    pattern(): string
+
+    enum():string[]
+
+    minLength(): number
+
+    maxLength(): number
+
+    minimum(): number
+
+    maximum(): number
+}
+
+
+export interface Body10 extends IAnnotated {
 
     mimeType(): string //
 
     type(): tsInterfaces.IParsedType //
 
     meta():any
+}
+
+export interface BodyLike08 extends HasSource08{
+
+    name():string
+
+    mimeType(): string
+
+    schema(): string
+
+    example(): string|number|boolean
+
+    formParameters(): Parameter08[]
+
+    schemaContent():string
+
+    description(): string
 }
 
 export interface TemplateReference{
@@ -263,8 +491,39 @@ export interface TemplateReference{
     }[]
 }
 
-export interface ResourceTypeFragment extends ResourceType, Fragment{}
+export interface ResourceTypeFragment extends ResourceType10, Fragment{}
 
-export interface TraitFragment extends Trait, Fragment{}
+export interface TraitFragment extends Trait10, Fragment{}
 
-export interface SecuritySchemeFragment extends SecuritySchemeDefinition, Fragment{}
+export interface SecuritySchemeFragment extends SecuritySchemeDefinition10, Fragment{
+    actualKind():string;
+}
+
+export interface TypeFragment extends Fragment{
+
+    type():tsInterfaces.IParsedType;
+
+    isAnnotation():boolean;
+
+    actualKind():string;
+}
+
+export interface ExampleSpecFragment extends Fragment{
+
+    name():string;
+
+    value():any;
+
+    strict():boolean;
+
+    displayName():string;
+
+    description():string;
+}
+
+export interface GlobalSchema extends tsInterfaces.HasSource{
+
+    name():string
+
+    schemaValue():string
+}

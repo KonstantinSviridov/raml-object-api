@@ -8,6 +8,12 @@ import resources = require("../typings-new-format/spec-1.0/resources");
 import methods = require("../typings-new-format/spec-1.0/methods");
 import security = require("../typings-new-format/spec-1.0/security");
 import common = require("../typings-new-format/spec-1.0/common");
+import api08 = require("../typings-new-format/spec-0.8/api");
+import bodies08 = require("../typings-new-format/spec-0.8/bodies");
+import parameters08 = require("../typings-new-format/spec-0.8/parameters");
+import methods08 = require("../typings-new-format/spec-0.8/methods");
+import resources08 = require("../typings-new-format/spec-0.8/resources");
+import security08 = require("../typings-new-format/spec-0.8/security");
 
 function normalizeTypes(target: any, typesArray:datamodel.TypeDeclaration[], types: string, resultName: string = types) {
     if(!typesArray || !typesArray.length){
@@ -59,7 +65,7 @@ function normalizeType(i: datamodel.TypeReference10) {
         delete res.scalarsAnnotations;
         delete res.fixedFacets;
         delete res.simplifiedExamples;
-        if(t.type && t.type.length){
+        if(Array.isArray(t.type) && t.type.length){
             res.type = t.type.map(x=>{
                 if(typeof(x) === "object"){
                     return normalizeType(x);
@@ -174,25 +180,14 @@ export abstract class Annotated{
     abstract scalarsAnnotations():{[key:string]:ti.IAnnotation[][]};
 }
 
-export abstract class Proxy<JSONType extends common.Annotable> extends Annotated implements ti.IAnnotatedElement, raml.HasSource {
+export abstract class Proxy<JSONType extends common.Annotable>  {
 
-    constructor(public readonly json: JSONType, public readonly parent: Proxy<any>) {
-        super();
+    constructor(public readonly json: JSONType, public readonly parent: Proxy<any>, protected _allowParametrizedKeys:boolean=false) {
     }
 
     abstract name();
 
     abstract kind();
-
-    owningFragment(): FragmentBase<any> {
-        if (this.parent) {
-            return this.parent.owningFragment();
-        }
-        if (this instanceof FragmentBase) {
-            return <any>this;
-        }
-        return null;
-    }
 
     description() {
         return (<any>this.json).description || (<any>this.json).usage
@@ -202,9 +197,67 @@ export abstract class Proxy<JSONType extends common.Annotable> extends Annotated
         return null;
     }
 
+    value() {
+        return this.json;
+    }
+
+    entry() {
+        return this.json;
+    }
+
+    sourceMap(){
+        return <ti.ElementSourceInfo>this.json.sourceMap;
+    }
+
+    metadata():any{
+        return this.json.__METADATA__;
+    }
+
+    root(): Proxy<any> {
+        if (this.parent) {
+            return (<Proxy<any>>this.parent).root();
+        }
+        return this;
+    }
+
+    allowParametrizedKeys(){
+        return this._allowParametrizedKeys;
+    }
+
+    parametrizedPart():any{
+        if(!this._allowParametrizedKeys){
+            return null;
+        }
+        let result = {};
+        for(let key of Object.keys(this.json).filter(x=>x.indexOf("<<")>=0)){
+            result[key] = this.json[key];
+        }
+        return result;
+    }
+}
+
+export abstract class Proxy10<JSONType extends common.Annotable> extends Proxy<JSONType> implements ti.IAnnotatedElement, raml.HasSource10{
+
+    constructor(json: JSONType, parent: Proxy10<any>, allowParametrizedKeys=false) {
+        super(json,parent,allowParametrizedKeys);
+    }
+
     private _annotations;
 
     private _scalarsAnnotations;
+
+    annotation(n:string){
+        let res: ti.IAnnotation = null;
+        this.annotations().forEach(x => {
+            if (x.name() == n || x.name().endsWith("." + n)) {
+                res = x;
+            }
+        })
+        if (res) {
+            return res.value();
+        }
+        return null;
+    }
 
     annotations(): ti.IAnnotation[] {
         if (this._annotations) {
@@ -219,14 +272,6 @@ export abstract class Proxy<JSONType extends common.Annotable> extends Annotated
         }
         this._annotations = result;
         return this._annotations;
-    }
-
-    value() {
-        return this.json;
-    }
-
-    entry() {
-        return this.json;
     }
 
     scalarsAnnotations():{[key:string]:ti.IAnnotation[][]}{
@@ -252,16 +297,19 @@ export abstract class Proxy<JSONType extends common.Annotable> extends Annotated
         return this._annotations;
     }
 
-    sourceMap(){
-        return <ti.ElementSourceInfo>this.json.sourceMap;
-    }
-
-    metadata():any{
-        return this.json.__METADATA__;
+    owningFragment(): FragmentBase<any> {
+        if (this.parent) {
+            return (<Proxy10<any>>this.parent).owningFragment();
+        }
+        if (this instanceof FragmentBase) {
+            return <any>this;
+        }
+        return null;
     }
 }
 
-export class Annotation extends Proxy<common.AnnotationInstance> implements raml.IAnnotation {
+
+export class Annotation extends Proxy10<common.AnnotationInstance> implements raml.IAnnotation {
 
 
     name(): string {
@@ -316,10 +364,13 @@ function unique(v: any[]) {
     return Array.from(new Set(v))
 }
 
-export abstract class FragmentBase<T> extends Proxy<T> implements raml.Fragment{
+export abstract class FragmentBase<T> extends Proxy10<T> implements raml.Fragment{
 
 
-    constructor(node: any, private tc: ti.IParsedTypeCollection) {
+    constructor(
+        node: any,
+        private tc: ti.IParsedTypeCollection,
+        protected _errors:common.Error[] = []) {
         super(node, null);
     }
 
@@ -352,9 +403,13 @@ export abstract class FragmentBase<T> extends Proxy<T> implements raml.Fragment{
     uses(){
         return mapArray<UsesDeclaration>(this, "uses", UsesDeclaration);
     }
+
+    errors(){
+        return this._errors;
+    }
 }
 
-export class UsesDeclaration extends Proxy<common.UsesDeclaration> implements raml.UsesDeclaration{
+export class UsesDeclaration extends Proxy10<common.UsesDeclaration> implements raml.UsesDeclaration{
 
     key(){
         return this.json.key;
@@ -377,34 +432,34 @@ export class UsesDeclaration extends Proxy<common.UsesDeclaration> implements ra
     }
 }
 
-export function mapArray<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>): T}): T[] {
+export function mapArray<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>, apk:boolean): T}): T[] {
     let obj = parent.json[property];
     if (!obj) {
         obj = [];
     }
-    return obj.map(x => x == null ? x : new clazz(x, parent));
+    return obj.map(x => x == null ? x : new clazz(x, parent, parent.allowParametrizedKeys()));
 }
-export function mapArrayMaps<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>): T}): T[] {
+export function mapArrayMaps<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>, apk:boolean): T}): T[] {
     let obj = parent.json[property];
     if (!obj) {
         obj = [];
     }
-    return obj.map(x => new clazz(x, parent));
+    return obj.map(x => new clazz(x, parent, parent.allowParametrizedKeys()));
 }
-export function mapMap<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>): T}): T[] {
+export function mapMap<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>, apk:boolean): T}): T[] {
     let obj = parent.json[property];
     if (!obj) {
         obj = {};
     }
     let res: T[] = [];
     Object.keys(obj).forEach(x => {
-        res.push(new clazz(obj[x], parent))
+        res.push(new clazz(obj[x], parent, parent.allowParametrizedKeys()))
     });
     return res;
 }
 
-function gatherResources(r: raml.Api|raml.Resource, res: raml.Resource[]) {
-    let resources: raml.Resource[] = r.resources();
+function gatherResources(r: raml.Api10|raml.Resource10, res: raml.Resource10[]) {
+    let resources: raml.Resource10[] = r.resources();
     resources.forEach(x => {
         res.push(x);
         gatherResources(x, res);
@@ -413,7 +468,7 @@ function gatherResources(r: raml.Api|raml.Resource, res: raml.Resource[]) {
 export abstract class LibraryBase<T> extends FragmentBase<T> {
 
     securitySchemes() {
-        return mapArrayMaps<SecuritySchemeDefinition>(this, "securitySchemes", SecuritySchemeDefinition);
+        return mapArrayMaps<SecuritySchemeDefinition10>(this, "securitySchemes", SecuritySchemeDefinition10);
     }
 
     add(t:ti.IParsedType): void{
@@ -429,11 +484,11 @@ export abstract class LibraryBase<T> extends FragmentBase<T> {
     }
 
     traits(){
-        return mapArray<Trait>(this, "traits", Trait);
+        return mapArray<Trait10>(this, "traits", Trait10);
     }
 
     resourceTypes(){
-        return mapArray<ResourceType>(this, "resourceTypes", ResourceType);
+        return mapArray<ResourceType10>(this, "resourceTypes", ResourceType10);
     }
 }
 // export class SecuritySchemeRef extends Proxy<security.SecuritySchemeBase10> implements raml.SecuredBy {
@@ -460,7 +515,7 @@ export abstract class LibraryBase<T> extends FragmentBase<T> {
 //         return mapArrayMaps<SecuritySchemeDefinition>(this, "securitySchemes", SecuritySchemeDefinition);
 //     }
 // }
-export class Documentation extends  Proxy<api.DocumentationItem>{
+export class Documentation extends  Proxy10<api.DocumentationItem>{
 
     name(){
         return this.json.title;
@@ -474,11 +529,37 @@ export class Documentation extends  Proxy<api.DocumentationItem>{
     }
 
     kind(){
-        return raml.NodeKindMap.RAML_KIND_DOCUMENTATION
+        return raml.NodeKindMap.NODE_KIND_DOCUMENTATION
     }
 }
 
-export class Api<T extends api.Api10 = api.Api10> extends LibraryBase<T> implements raml.Api {
+export class Documentation08 extends  Proxy<api08.DocumentationItem08>{
+
+    name(){
+        return this.json.title;
+    }
+
+    title(){
+        return this.json.title;
+    }
+    content(){
+        return this.json.content;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_DOCUMENTATION_08
+    }
+}
+
+
+export class Api10<T extends api.Api10 = api.Api10> extends LibraryBase<T> implements raml.Api10 {
+
+    constructor(
+        node: any,
+        tc: ti.IParsedTypeCollection,
+        errors:common.Error[]=[]) {
+        super(node, tc, errors);
+    }
 
     baseUri(): string {
         return this.json.baseUri;
@@ -501,7 +582,7 @@ export class Api<T extends api.Api10 = api.Api10> extends LibraryBase<T> impleme
     }
 
     securedBy() {
-        return mapArray(this, "securedBy", SecuritySchemeDefinition)
+        return mapArray(this, "securedBy", SecuritySchemeDefinition10)
     }
 
     version(): string {
@@ -517,21 +598,21 @@ export class Api<T extends api.Api10 = api.Api10> extends LibraryBase<T> impleme
     }
 
     kind() {
-        return raml.NodeKindMap.RAML_KIND_API;
+        return raml.NodeKindMap.NODE_KIND_API;
     }
 
     resources() {
-        return mapArray<Resource>(this, "resources", Resource);
+        return mapArray<Resource10>(this, "resources", Resource10);
     }
 
     allResources() {
-        let res: raml.Resource[] = []
+        let res: raml.Resource10[] = []
         gatherResources(this, res);
         return res;
     }
 
     allMethods() {
-        let meth: raml.Method[] = [];
+        let meth: raml.Method10[] = [];
         this.allResources().forEach(x => {
             meth = meth.concat(x.methods());
         })
@@ -539,7 +620,95 @@ export class Api<T extends api.Api10 = api.Api10> extends LibraryBase<T> impleme
     }
 }
 
-export class Overlay extends Api<api.Overlay> implements raml.Overlay{
+export class Api08 extends Proxy<api08.Api08> implements raml.Api08 {
+
+    constructor(
+        node: any,
+        protected _errors:common.Error[]=[]) {
+        super(node, null);
+    }
+
+    baseUri(): string {
+        return this.json.baseUri;
+    }
+    protocols(){
+        return this.json.protocols;
+    }
+    mediaType(){
+        return this.json.mediaType;
+    }
+    baseUriParameters(){
+        if (this.json.baseUriParameters) {
+            return params08(this.json.baseUriParameters,this, "baseUriParameters");
+        }
+        return []
+    }
+
+    documentation() {
+        return mapArray(this, "documentation", Documentation08)
+    }
+
+    securedBy() {
+        return mapArray(this, "securedBy", SecuritySchemeDefinition08)
+    }
+
+    version(): string {
+        return this.json.version;
+    }
+
+    name() {
+        return this.title();
+    }
+
+    title() {
+        return this.json.title;
+    }
+
+    kind() {
+        return raml.NodeKindMap.NODE_KIND_API_08;
+    }
+
+    traits() {
+        return mapArray<Trait08>(this, "traits", Trait08);
+    }
+
+    resourceTypes() {
+        return mapArray<ResourceType08>(this, "resourceTypes", ResourceType08);
+    }
+
+    securitySchemes() {
+        return mapArray<SecuritySchemeDefinition08>(this, "securitySchemes", SecuritySchemeDefinition08);
+    }
+
+    resources() {
+        return mapArray<Resource08>(this, "resources", Resource08);
+    }
+
+    allResources() {
+        let res: raml.Resource08[] = []
+        //gatherResources(this, res);
+        return res;
+    }
+
+    allMethods() {
+        let meth: raml.Method08[] = [];
+        this.allResources().forEach(x => {
+            meth = meth.concat(x.methods());
+        })
+        return meth;
+    }
+
+    schemas():GlobalSchema[]{
+        let gSchemas = (<api08.Api08><any>this.json).schemas;
+        return gSchemas && gSchemas.map(x=>new GlobalSchema(x,this));
+    }
+
+    errors(){
+        return this._errors;
+    }
+}
+
+export class Overlay extends Api10<api.Overlay> implements raml.Overlay{
 
     extends(){
         return this.json.extends;
@@ -550,11 +719,11 @@ export class Overlay extends Api<api.Overlay> implements raml.Overlay{
     }
 
     kind(){
-        return raml.NodeKindMap.RAML_KIND_OVERLAY;
+        return raml.NodeKindMap.NODE_KIND_OVERLAY;
     }
 }
 
-export class Extension extends Api<api.Extension> implements raml.Extension{
+export class Extension extends Api10<api.Extension> implements raml.Extension{
 
     extends(){
         return this.json.extends;
@@ -565,15 +734,15 @@ export class Extension extends Api<api.Extension> implements raml.Extension{
     }
 
     kind(){
-        return raml.NodeKindMap.RAML_KIND_EXTENSION;
+        return raml.NodeKindMap.NODE_KIND_EXTENSION;
     }
 }
 
-function bodies(t: MethodBase<any>|Response) {
+function bodies(t: MethodBase10<any>|Response10) {
     if (!t.json.body) {
         return [];
     }
-    let result: Body[] = []
+    let result: Body10[] = []
     for(let x of t.json.body){
         let name = x.name;
         let td = normalizeType(x);
@@ -582,14 +751,14 @@ function bodies(t: MethodBase<any>|Response) {
         if(!parsedType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata).length){
             meta = x.__METADATA__;
         }
-        result.push(new Body(name, parsedType, t, meta));
+        result.push(new Body10(name, parsedType, t, meta));
     }
     return result;
 }
 
-function params(v: datamodel.TypeDeclaration[], parent: Proxy<any>, location: string) {
+function params(v: datamodel.TypeDeclaration[], parent: Proxy10<any>, location: string) {
 
-    let result: Parameter[] = [];
+    let result: Parameter10[] = [];
     if (v && v.length>0) {
         for( let x of v){
             let td = normalizeType(x);
@@ -599,13 +768,20 @@ function params(v: datamodel.TypeDeclaration[], parent: Proxy<any>, location: st
             if(!parsedType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata).length){
                 meta = x.__METADATA__;
             }
-            result.push(new Parameter(x.name, parsedType, required, location, parent,meta));
+            result.push(new Parameter10(x.name, parsedType, required, location, parent,meta));
         }
     }
     return result;
 }
 
-export class Response extends Proxy<methods.Response10> implements raml.Response {
+function params08(json:parameters08.Parameter08[],parent:Proxy<any>,location:string):Parameter08[]{
+    if(!json){
+        return [];
+    }
+    return json.map(x=>new Parameter08(x,parent,location));
+}
+
+export class Response10 extends Proxy10<methods.Response10> implements raml.Response10 {
     name() {
         return this.json.code;
     }
@@ -623,16 +799,43 @@ export class Response extends Proxy<methods.Response10> implements raml.Response
     }
 
     method() {
-        return <Method>this.parent;
+        return <Method10>this.parent;
     }
 
     kind() {
-        return raml.NodeKindMap.RAML_KIND_RESPONSE;
+        return raml.NodeKindMap.NODE_KIND_RESPONSE;
     }
 }
-export class Body extends Annotated implements raml.Body {
 
-    constructor(private mime: string, private p: ti.IParsedType, private owner:raml.MethodBase|raml.Response, private _meta?:any) {
+export class Response08 extends Proxy<bodies08.Response08> implements raml.Response08 {
+    name() {
+        return this.json.code;
+    }
+
+    code() {
+        return this.json.code;
+    }
+
+    headers() {
+        return params08(this.json.headers,this, "headers");
+    }
+
+    bodies() {
+        return mapArray(this, "body", BodyLike08);
+    }
+
+    method() {
+        return <Method08>this.parent;
+    }
+
+    kind() {
+        return raml.NodeKindMap.NODE_KIND_RESPONSE_08;
+    }
+}
+
+export class Body10 extends Annotated implements raml.Body10 {
+
+    constructor(private mime: string, private p: ti.IParsedType, private owner:raml.MethodBase10|raml.Response10, private _meta?:any) {
         super()
     }
 
@@ -657,14 +860,61 @@ export class Body extends Annotated implements raml.Body {
     }
 
     kind(){
-        return raml.NodeKindMap.RAML_KIND_BODY;
+        return raml.NodeKindMap.NODE_KIND_BODY;
     }
 
     meta(){
         return this._meta;
     }
 }
-export class Parameter extends  Annotated implements raml.Parameter {
+
+export class BodyLike08 extends Proxy<bodies08.BodyLike08> implements raml.BodyLike08 {
+
+    name() {
+        return this.json.name;
+    }
+
+    mimeType() {
+        return this.json.name;
+    }
+
+    schema() {
+        return this.json.schema;
+    }
+
+    example() {
+        return this.json.example;
+    }
+
+    formParameters(){
+        let result:raml.Parameter08[] = [];
+        if(!this.json.formParameters){
+            return result;
+        }
+        if(!this.json.formParameters){
+            return result;
+        }
+        for(let p of this.json.formParameters){
+            result.push(new Parameter08(p,this,"formParameters"));
+        }
+        return result;
+    }
+
+    schemaContent(){
+        return this.json.schemaContent;
+    }
+
+    description(){
+        return this.json.description;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_BODYLIKE_08;
+    }
+
+}
+
+export class Parameter10 extends  Annotated implements raml.Parameter10 {
 
     constructor(private mime: string, private p: ti.IParsedType, private req: boolean, private loc: string, private owner:raml.IAnnotated, private _meta?:any) {
         super();
@@ -699,7 +949,7 @@ export class Parameter extends  Annotated implements raml.Parameter {
     }
 
     kind(){
-        return raml.NodeKindMap.RAML_KIND_PARAMETER;
+        return raml.NodeKindMap.NODE_KIND_PARAMETER;
     }
 
     meta():any{
@@ -707,10 +957,100 @@ export class Parameter extends  Annotated implements raml.Parameter {
     }
 }
 
-export abstract class Operation<T extends methods.Operation10> extends Proxy<T> implements raml.Operation {
+export class Parameter08 extends Proxy<parameters08.Parameter08> implements raml.Parameter08 {
+
+    constructor(json: parameters08.Parameter08, parent: Proxy<any>, protected _location:string) {
+        super(json,parent,parent.allowParametrizedKeys());
+    }
+
+    name(){
+        return this.json.name;
+    }
+
+    required(){
+        return this.json.required;
+    }
+
+    type(){
+        return this.json.type;
+    }
+
+    location(){
+        return this._location;
+    }
+
+    displayName(){
+        return this.json.displayName;
+    }
+
+    default(){
+        return this.json.default;
+    }
+
+    example(){
+        return this.json.example;
+    }
+
+    repeat(){
+        return this.json.repeat;
+    }
+
+    description(){
+        return this.json.description;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_PARAMETER_08;
+    }
+
+    pattern(){
+        if((<parameters08.StringTypeDeclaration08>this.json).pattern!=null){
+            return (<parameters08.StringTypeDeclaration08>this.json).pattern;
+        }
+        return null;
+    }
+
+    enum(){
+        if((<parameters08.StringTypeDeclaration08>this.json).enum!=null){
+            return (<parameters08.StringTypeDeclaration08>this.json).enum;
+        }
+        return null;
+    }
+
+    minLength(){
+        if((<parameters08.StringTypeDeclaration08>this.json).minLength!=null){
+            return (<parameters08.StringTypeDeclaration08>this.json).minLength;
+        }
+        return null;
+    }
+
+    maxLength(){
+        if((<parameters08.StringTypeDeclaration08>this.json).maxLength!=null){
+            return (<parameters08.StringTypeDeclaration08>this.json).maxLength;
+        }
+        return null;
+    }
+
+    minimum(){
+        if((<parameters08.NumberTypeDeclaration08>this.json).minimum!=null){
+            return (<parameters08.NumberTypeDeclaration08>this.json).minimum;
+        }
+        return null;
+    }
+
+    maximum(){
+        if((<parameters08.NumberTypeDeclaration08>this.json).maximum!=null){
+            return (<parameters08.NumberTypeDeclaration08>this.json).maximum;
+        }
+        return null;
+    }
+}
+
+
+export abstract class Operation10<T extends methods.Operation10> extends Proxy10<T> implements raml.Operation {
 
     parameters() {
-        let initial: raml.Parameter[] =
+        let initial: raml.Parameter10[] =
             params(this.json.queryParameters, this, "query")
                 .concat(params(this.json.headers, this, "headers"));
 
@@ -718,29 +1058,18 @@ export abstract class Operation<T extends methods.Operation10> extends Proxy<T> 
             let td = normalizeType(this.json.queryString);
             let parsedType = ts.parseJsonTypeWithCollection("", td, <any>this.owningFragment(), false);
             let required = this.json.queryString.required;
-            initial.push(new Parameter("queryString", parsedType, required, "queryString", this));
+            initial.push(new Parameter10("queryString", parsedType, required, "queryString", this));
         }
         return initial;
     }
 
     responses() {
-        return mapMap(this, "responses", Response);
-    }
-}
-
-export class SecuritySchemePart<T extends security.SecuritySchemePart10> extends Operation<T> implements raml.SecuritySchemePart {
-
-    name(){
-        return null;
-    }
-
-    kind(){
-        return raml.NodeKindMap.NODE_KIND_SECURITY_SCHEME_PART;
+        return mapMap(this, "responses", Response10);
     }
 }
 
 
-export abstract class MethodBase<T extends methods.MethodBase10> extends Operation<T> implements raml.MethodBase {
+export abstract class MethodBase10<T extends methods.MethodBase10> extends Operation10<T> implements raml.MethodBase10 {
 
     abstract name(): string;
 
@@ -762,7 +1091,7 @@ export abstract class MethodBase<T extends methods.MethodBase10> extends Operati
     }
 
     parameters() {
-        let initial: raml.Parameter[] =
+        let initial: raml.Parameter10[] =
             params(this.json.queryParameters, this, "query")
                 .concat(params(this.json.headers, this, "headers"));
 
@@ -770,7 +1099,7 @@ export abstract class MethodBase<T extends methods.MethodBase10> extends Operati
             let td = normalizeType(this.json.queryString);
             let parsedType = ts.parseJsonTypeWithCollection("", td, <any>this.owningFragment(), false);
             let required = this.json.queryString.required;
-            initial.push(new Parameter("queryString", parsedType, required, "queryString", this));
+            initial.push(new Parameter10("queryString", parsedType, required, "queryString", this));
         }
         return initial;
     }
@@ -780,7 +1109,7 @@ export abstract class MethodBase<T extends methods.MethodBase10> extends Operati
     }
 
     responses() {
-        return mapMap(this, "responses", Response);
+        return mapMap(this, "responses", Response10);
     }
 
     is() {
@@ -788,7 +1117,69 @@ export abstract class MethodBase<T extends methods.MethodBase10> extends Operati
     }
 }
 
-export class Method extends MethodBase<methods.Method10> implements raml.Method {
+export abstract class MethodBase08<T extends methods08.MethodBase08> extends Proxy<T> implements raml.MethodBase08 {
+
+    responses() {
+        return mapArray(this, "responses", Response08);
+    }
+
+    body(){
+        return mapArray(this, "body", BodyLike08);
+    }
+
+    protocols(){
+        if (this.json.protocols){
+            return this.json.protocols;
+        }
+        return []
+    }
+
+    abstract securedBy(): raml.SecuredBy08[];
+
+    parameters() {
+        let initial = params08(this.json.queryParameters,this, "query");
+        initial = initial.concat(params08(this.json.headers,this, "headers"));
+        return initial;
+    }
+
+    description(){
+        return this.json.description;
+    }
+
+}
+
+export class SecuritySchemePart10<T extends security.SecuritySchemePart10> extends Operation10<T> implements raml.SecuritySchemePart10 {
+
+    name(){
+        return null;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_SECURITY_SCHEME_PART;
+    }
+}
+
+export class SecuritySchemePart08<T extends security08.SecuritySchemePart08> extends MethodBase08<T> implements raml.SecuritySchemePart08 {
+
+    name(){
+        return null;
+    }
+
+    is() {
+        return this.json.is && this.json.is.map(x=>new TemplateReference(x));
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_SECURITY_SCHEME_PART_08;
+    }
+
+    securedBy() {
+        return mapArray(this, "securedBy", SecuritySchemeDefinition08);
+    }
+}
+
+
+export class Method10 extends MethodBase10<methods.Method10> implements raml.Method10 {
     name() {
         return this.json.method
     }
@@ -804,11 +1195,11 @@ export class Method extends MethodBase<methods.Method10> implements raml.Method 
         if (!this.json.securedBy && this.resource()) {
             return this.resource().securedBy();
         }
-        return mapArray(this, "securedBy", SecuritySchemeDefinition)
+        return mapArray(this, "securedBy", SecuritySchemeDefinition10)
     }
 
     kind() {
-        return raml.NodeKindMap.RAML_KIND_METHOD;
+        return raml.NodeKindMap.NODE_KIND_METHOD;
     }
 
     method() {
@@ -824,18 +1215,67 @@ export class Method extends MethodBase<methods.Method10> implements raml.Method 
         return initial;
     }
 
-    resource(): Resource {
-        if (this.parent && this.parent.kind() == raml.NodeKindMap.RAML_KIND_RESOURCE) {
-            return <Resource>this.parent;
+    resource(): Resource10 {
+        if (this.parent && this.parent.kind() == raml.NodeKindMap.NODE_KIND_RESOURCE) {
+            return <Resource10>this.parent;
         }
         return null;
     }
 }
 
-export class Trait extends MethodBase<methods.Trait10> implements raml.Trait {
+export class Method08 extends MethodBase08<methods08.Method08> implements raml.Method08 {
+    name() {
+        return this.json.method
+    }
+
+    protocols(){
+        if (this.json.protocols){
+            return this.json.protocols;
+        }
+        return []
+    }
+
+    securedBy(): raml.SecuredBy08[] {
+        if (!this.json.securedBy && this.resource()) {
+            return this.resource().securedBy();
+        }
+        return mapArray(this, "securedBy", SecuritySchemeDefinition08);
+    }
+
+    is() {
+        return this.json.is && this.json.is.map(x=>new TemplateReference(x));
+    }
+
+    kind() {
+        return raml.NodeKindMap.NODE_KIND_METHOD_08;
+    }
+
+    method() {
+        return this.json.method;
+    }
+
+    parameters() {
+        let initial = super.parameters()
+            .concat(params08(this.json.uriParameters,this,"uriParameters"));
+        return initial;
+    }
+
+    resource() {
+        if (this.parent && this.parent.kind() == raml.NodeKindMap.NODE_KIND_RESOURCE_08) {
+            return <Resource08>this.parent;
+        }
+        return null;
+    }
+}
+
+export class Trait10 extends MethodBase10<methods.Trait10> implements raml.Trait10 {
+
+    constructor(json:methods.Trait10, parent: Proxy10<any>) {
+        super(json,parent,true);
+    }
 
     securedBy(): raml.SecuredBy[] {
-        return mapArray(this, "securedBy", SecuritySchemeDefinition);
+        return mapArray(this, "securedBy", SecuritySchemeDefinition10);
     }
 
     name(){
@@ -851,6 +1291,33 @@ export class Trait extends MethodBase<methods.Trait10> implements raml.Trait {
     }
 }
 
+export class Trait08 extends MethodBase08<methods08.Trait> implements raml.Trait08 {
+
+    constructor(json:methods08.Trait, parent: Proxy<any>) {
+        super(json,parent,true);
+    }
+
+    securedBy(): raml.SecuredBy08[] {
+        return mapArray(this, "securedBy", SecuritySchemeDefinition08);
+    }
+
+    name(){
+        return this.json.name;
+    }
+
+    usage(){
+        return this.json.usage;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_TRAIT_08;
+    }
+
+    displayName(){
+        return this.json.displayName;
+    }
+}
+
 /**
  *
  */
@@ -861,14 +1328,14 @@ export class Library extends LibraryBase<api.Library> implements raml.Library {
     }
 
     kind() {
-        return raml.NodeKindMap.RAML_KIND_LIBRARY;
+        return raml.NodeKindMap.NODE_KIND_LIBRARY;
     }
 
     name() {
         return "";
     }
 }
-export class SecuritySchemeDefinition extends Proxy<security.SecuritySchemeBase10> implements raml.SecuritySchemeDefinition {
+export class SecuritySchemeDefinition10 extends Proxy10<security.SecuritySchemeBase10> implements raml.SecuritySchemeDefinition10 {
 
     settings() {
         return this.json.settings;
@@ -883,18 +1350,48 @@ export class SecuritySchemeDefinition extends Proxy<security.SecuritySchemeBase1
     }
 
     kind() {
-        return raml.NodeKindMap.RAML_KIND_SECURITY_SCHEME_DEFINITION;
+        return raml.NodeKindMap.NODE_KIND_SECURITY_SCHEME_DEFINITION;
     }
 
     describedBy(){
         if(this.json.describedBy){
-            return new SecuritySchemePart(this.json.describedBy,this);
+            return new SecuritySchemePart10(this.json.describedBy,this);
         }
         return null;
     }
 }
 
-export abstract class ResourceBase<T extends resources.ResourceBase10> extends Proxy<T> implements raml.ResourceBase {
+export class SecuritySchemeDefinition08 extends Proxy<security08.AbstractSecurityScheme08> implements raml.SecuritySchemeDefinition08 {
+
+    settings() {
+        return this.json.settings;
+    }
+
+    type() {
+        return this.json.type;
+    }
+
+    name() {
+        return this.json.name;
+    }
+
+    kind() {
+        return raml.NodeKindMap.NODE_KIND_SECURITY_SCHEME_DEFINITION_08;
+    }
+
+    describedBy(){
+        if(this.json.describedBy){
+            return new SecuritySchemePart08(this.json.describedBy,this);
+        }
+        return null;
+    }
+
+    description(){
+        return this.json.description;
+    }
+}
+
+export abstract class ResourceBase10<T extends resources.ResourceBase10> extends Proxy10<T> implements raml.ResourceBase10 {
 
     abstract securedBy(): raml.SecuredBy[];
 
@@ -911,7 +1408,7 @@ export abstract class ResourceBase<T extends resources.ResourceBase10> extends P
     }
 
     methods() {
-        return mapArray<Method>(this, "methods", Method);
+        return mapArray<Method10>(this, "methods", Method10);
     }
 
     name() {
@@ -930,13 +1427,53 @@ export abstract class ResourceBase<T extends resources.ResourceBase10> extends P
     }
 }
 
-export class Resource extends ResourceBase<resources.Resource10> implements raml.Resource {
+export abstract class ResourceBase08<T extends resources08.ResourceBase08> extends Proxy<T> implements raml.ResourceBase08 {
+
+    abstract securedBy(): raml.SecuredBy08[];
+
+    displayName() {
+        return this.json.displayName;
+    }
+
+    description(){
+        return this.json.description;
+    }
+
+    uriParameters() {
+        return params08(this.json.uriParameters,this, "uriParameters");
+    }
+
+    methods() {
+        return mapArray<Method08>(this, "methods", Method08);
+    }
+
+    name() {
+        return this.json.displayName;
+    }
+
+    type(){
+        if(this.json.type){
+            return new TemplateReference(this.json.type);
+        }
+        return null;
+    }
+
+    is() {
+        return this.json.is && this.json.is.map(x=>new TemplateReference(x));
+    }
+
+    baseUriParameters(){
+        return params08(this.json.baseUriParameters,this, "baseUriParameters");
+    }
+}
+
+export class Resource10 extends ResourceBase10<resources.Resource10> implements raml.Resource10 {
 
     securedBy(): raml.SecuredBy[] {
         if (!this.json.securedBy && this.owningApi()) {
             return this.owningApi().securedBy();
         }
-        return mapArray(this, "securedBy", SecuritySchemeDefinition);
+        return mapArray(this, "securedBy", SecuritySchemeDefinition10);
     }
 
     relativeUri() {
@@ -963,16 +1500,16 @@ export class Resource extends ResourceBase<resources.Resource10> implements raml
         return absoluteUri(this.parentResource(),this);
     }
 
-    parentResource(): raml.Resource {
-        if (this.parent.kind() == raml.NodeKindMap.RAML_KIND_RESOURCE) {
-            return <Resource>this.parent;
+    parentResource(): raml.Resource10 {
+        if (this.parent.kind() == raml.NodeKindMap.NODE_KIND_RESOURCE) {
+            return <Resource10>this.parent;
         }
         return null;
     }
 
     allUriParameters() {
-        const ownUriParameters:raml.Parameter[] = this.uriParameters();
-        let parentParameters:raml.Parameter[] = [];
+        const ownUriParameters:raml.Parameter10[] = this.uriParameters();
+        let parentParameters:raml.Parameter10[] = [];
         const paramsMap:{[key:string]:boolean} = {};
         ownUriParameters.forEach(x=>paramsMap[x.name()]=true);
         let p = this.parentResource();
@@ -986,12 +1523,12 @@ export class Resource extends ResourceBase<resources.Resource10> implements raml
         return ownUriParameters.concat(parentParameters);
     }
 
-    resources(): raml.Resource[] {
-        return mapArray<Resource>(this, "resources", Resource);
+    resources(): raml.Resource10[] {
+        return mapArray<Resource10>(this, "resources", Resource10);
     }
 
     owningApi() {
-        return <raml.Api><any>this.owningFragment();
+        return <raml.Api10><any>this.owningFragment();
     }
 
     relativeUriPathSegments(){
@@ -1007,14 +1544,87 @@ export class Resource extends ResourceBase<resources.Resource10> implements raml
     }
 
     kind() {
-        return raml.NodeKindMap.RAML_KIND_RESOURCE;
+        return raml.NodeKindMap.NODE_KIND_RESOURCE;
     }
 }
 
-export class ResourceType extends ResourceBase<resources.ResourceType10> implements raml.ResourceType {
+export class Resource08 extends ResourceBase08<resources08.Resource08> implements raml.Resource08 {
+
+    securedBy(): raml.SecuredBy08[] {
+        // if (!this.json.securedBy && this.owningApi()) {
+        //     return this.owningApi().securedBy();
+        // }
+        return mapArray(this, "securedBy", SecuritySchemeDefinition08);
+    }
+
+    relativeUri() {
+        return this.json.relativeUri;
+    }
+
+    completeRelativeUri() {
+        return completeRelativeUri(this);
+    }
+
+    absoluteUri() {
+        return absoluteUri(this,this);
+    }
+
+    parentUri() {
+        const pResource = this.parentResource();
+        if(pResource){
+            return completeRelativeUri(pResource);
+        }
+        return "";
+    }
+
+    absoluteParentUri() {
+        return absoluteUri(this.parentResource(),this);
+    }
+
+    parentResource(): raml.Resource08 {
+        if (this.parent.kind() == raml.NodeKindMap.NODE_KIND_RESOURCE_08) {
+            return <Resource08>this.parent;
+        }
+        return null;
+    }
+
+    allUriParameters() {
+        return null;
+    }
+
+    resources(): raml.Resource08[] {
+        return mapArray<Resource08>(this, "resources", Resource08);
+    }
+
+    owningApi() {
+        return <raml.Api08><any>this.root();
+    }
+
+    relativeUriPathSegments(){
+        const relUri = this.relativeUri();
+        if(relUri) {
+            let segments = relUri.trim().split("/");
+            while (segments.length > 0 && segments[0].length == 0) {
+                segments.shift();
+            }
+            return segments;
+        }
+        return null;
+    }
+
+    kind() {
+        return raml.NodeKindMap.NODE_KIND_RESOURCE_08;
+    }
+}
+
+export class ResourceType10 extends ResourceBase10<resources.ResourceType10> implements raml.ResourceType10 {
+
+    constructor(json:resources.ResourceType10, parent: Proxy10<any>) {
+        super(json,parent,true);
+    }
 
     securedBy(): raml.SecuredBy[] {
-        return mapArray(this, "securedBy", SecuritySchemeDefinition);
+        return mapArray(this, "securedBy", SecuritySchemeDefinition10);
     }
 
     name(){
@@ -1026,32 +1636,169 @@ export class ResourceType extends ResourceBase<resources.ResourceType10> impleme
     }
 
     kind(){
-        return raml.NodeKindMap.RAML_KIND_RESOURCE_TYPE;
+        return raml.NodeKindMap.NODE_KIND_RESOURCE_TYPE;
     }
 }
 
-export class ResourceTypeFragment extends ResourceType implements raml.ResourceTypeFragment{
+export class ResourceType08 extends ResourceBase08<resources08.ResourceType08> implements raml.ResourceType08 {
+
+    constructor(json:resources08.ResourceType08, parent: Proxy<any>) {
+        super(json,parent,true);
+    }
+
+    securedBy(): raml.SecuredBy08[] {
+        return mapArray(this, "securedBy", SecuritySchemeDefinition08);
+    }
+
+    name(){
+        return this.json.name;
+    }
+
+    usage(){
+        return this.json.usage;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_RESOURCE_TYPE_08;
+    }
+}
+
+export class ResourceTypeFragment extends ResourceType10 implements raml.ResourceTypeFragment{
+
+    constructor(
+        json:resources.ResourceType10,
+        protected _errors: common.Error[] = []) {
+        super(json,null);
+    }
 
     uses(){
         return mapArray<UsesDeclaration>(this, "uses", UsesDeclaration);
     }
+
+    errors(){
+        return this._errors;
+    }
 }
 
-export class TraitFragment extends Trait implements raml.TraitFragment{
+export class TraitFragment extends Trait10 implements raml.TraitFragment{
+
+    constructor(
+        json:methods.Trait10,
+        protected _errors: common.Error[] = []) {
+        super(json,null);
+    }
 
     uses(){
         return mapArray<UsesDeclaration>(this, "uses", UsesDeclaration);
     }
+
+    errors(){
+        return this._errors;
+    }
 }
 
-export class SecuritySchemeFragment extends SecuritySchemeDefinition implements raml.SecuritySchemeFragment{
+export class SecuritySchemeFragment extends SecuritySchemeDefinition10 implements raml.SecuritySchemeFragment{
+
+    constructor(
+        json:security.SecuritySchemeBase10,
+        protected _actualKind:string,
+        protected _errors: common.Error[] = []) {
+        super(json,null);
+    }
 
     uses(){
         return mapArray<UsesDeclaration>(this, "uses", UsesDeclaration);
     }
+
+    actualKind(){
+        return this._actualKind;
+    }
+
+    errors(){
+        return this._errors;
+    }
 }
 
-export function load(json:root.RAMLParseResult):raml.Fragment{
+export class TypeFragment extends FragmentBase<datamodel.TypeDeclarationFragment> implements raml.TypeFragment{
+
+    constructor(
+        json: datamodel.TypeDeclarationFragment,
+        protected _isAnnotation:boolean,
+        protected _actualKind:string,
+        errors:common.Error[] = []) {
+        super(json,ts.parseJSONTypeCollection(json),errors);
+    }
+
+    name(){
+        return this.json.name;
+    }
+
+    uses(){
+        return mapArray<UsesDeclaration>(this, "uses", UsesDeclaration);
+    }
+
+    type(){
+        let name = this.json.name || "";
+        let td = normalizeType(this.json);
+        let parsedType = ts.parseJsonTypeWithCollection(name, td, <any>this, true);
+        return parsedType;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_TYPE_DECLARATION;
+    }
+
+    isAnnotation(){
+        return this._isAnnotation;
+    }
+
+    actualKind(){
+        return this._actualKind;
+    }
+}
+
+export class ExampleSpecFragment extends Proxy10<datamodel.ExampleSpec10> implements raml.ExampleSpecFragment{
+
+    constructor(
+        json: datamodel.ExampleSpec10,
+        protected _errors:common.Error[] = []) {
+        super(json,null);
+    }
+
+    name(){
+        return this.json.name;
+    }
+
+    uses(){
+        return mapArray<UsesDeclaration>(this, "uses", UsesDeclaration);
+    }
+
+    value(){
+        return this.json.value;
+    }
+
+    displayName(){
+        return this.json.displayName;
+    }
+
+    description(){
+        return this.json.description;
+    }
+
+    strict(){
+        return this.json.strict;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_EXAMPLE_SPEC;
+    }
+
+    errors(){
+        return this._errors;
+    }
+}
+
+export function load(json:root.RAMLParseResult):raml.Fragment|raml.Api08{
     if(!json){
         return null;
     }
@@ -1061,37 +1808,51 @@ export function load(json:root.RAMLParseResult):raml.Fragment{
 
     const specType = hasDetails ? json.type : "Api";
     const specBody = hasDetails ? json.specification : json;
+    const errors = hasDetails ? json.errors : [];
+    const ramlVersion = hasDetails ? json.ramlVersion : "RAML10";
 
-    let collection:ti.IParsedTypeCollection;
-    if( ["Api", "Overlay", "Extension", "Library"].indexOf(specType)>=0) {
+    if(ramlVersion=="RAML08"){
+        return new Api08(specBody, errors);
+    }
+    else {
         let nm = normalize(<api.LibraryBase10>specBody);
-        collection = ts.parseJSONTypeCollection(nm);
+        let collection: ti.IParsedTypeCollection;
+        if (["Api", "Overlay", "Extension", "Library"].indexOf(specType) >= 0) {
+            collection = ts.parseJSONTypeCollection(nm);
+        }
+        if (specType == "Overlay") {
+            return new Overlay(specBody, collection, errors);
+        }
+        else if (specType == "Extension") {
+            return new Extension(specBody, collection, errors);
+        }
+        else if (specType == "Library") {
+            return new Library(specBody, collection, errors);
+        }
+        else if (specType == "ResourceType") {
+            return new ResourceTypeFragment(<resources.ResourceType10>specBody, errors);
+        }
+        else if (specType == "Trait") {
+            return new TraitFragment(<methods.Trait10>specBody, errors);
+        }
+        else if (specType == "ExampleSpec") {
+            return new ExampleSpecFragment(<datamodel.ExampleSpec10>specBody, errors);
+        }
+        else if (specType.indexOf("Type") >= 0) {
+            let isAnnotation = specType.indexOf("Annotation") >= 0;
+            return new TypeFragment(<datamodel.TypeDeclarationFragment>specBody, isAnnotation, specType, errors);
+        }
+        else if (specType.indexOf("SecurityScheme") >= 0) {
+            return new SecuritySchemeFragment(<security.SecuritySchemeBase10>specBody, specType, errors);
+        }
+        return new Api10(specBody, collection, errors);
     }
-    if(specType == "Overlay"){
-        return new Overlay(specBody, collection);
-    }
-    else if(specType == "Extension"){
-        return new Extension(specBody, collection);
-    }
-    else if(specType == "Library"){
-        return new Library(specBody, collection);
-    }
-    else if(specType == "ResourceType"){
-        return new ResourceTypeFragment(<resources.ResourceType10>specBody, null);
-    }
-    else if(specType == "Trait"){
-        return new TraitFragment(<methods.Trait10>specBody, null);
-    }
-    else if(specType.indexOf("SecurityScheme")>=0){
-        return new SecuritySchemeFragment(<security.SecuritySchemeBase10>specBody, null);
-    }
-    return new Api(specBody, collection);
 }
 
-export function loadApi(api: api.Api10): raml.Api {
+export function loadApi(api: api.Api10): raml.Api10 {
     let nm = normalize(api);
     let collection = ts.parseJSONTypeCollection(nm);
-    return new Api(api, collection);
+    return new Api10(api, collection);
 }
 
 export function loadLibrary(api: api.Library): raml.Library {
@@ -1110,7 +1871,7 @@ export function toTypeDeclaration(
     return parsedType;
 }
 
-export function completeRelativeUri(res:raml.Resource):string{
+export function completeRelativeUri(res:raml.Resource10|raml.Resource08):string{
     let uri = '';
     let parent = res;
     do{
@@ -1123,7 +1884,7 @@ export function completeRelativeUri(res:raml.Resource):string{
     return uri;
 }
 
-export function absoluteUri(res:raml.Resource,fragmentSrc:raml.Resource):string{
+export function absoluteUri(res:raml.Resource10|raml.Resource08, fragmentSrc:raml.Resource10|raml.Resource08):string{
 
     let uri = '';
     if(res) {
@@ -1136,13 +1897,20 @@ export function absoluteUri(res:raml.Resource,fragmentSrc:raml.Resource):string{
         while (parent);
         uri = uri.replace(/\/\//g, '/');
     }
-    let api = fragmentSrc.owningFragment();
+    let api:raml.Api08|raml.IAnnotated;
+    if(fragmentSrc.kind()==raml.NodeKindMap.NODE_KIND_RESOURCE_08){
+        api = (<raml.Resource08>fragmentSrc).owningApi();
+    }
+    else {
+        api = (<raml.Resource10>fragmentSrc).owningFragment();
+    }
     if(api &&(
-        api.kind() == raml.NodeKindMap.RAML_KIND_API
-            || api.kind() == raml.NodeKindMap.RAML_KIND_OVERLAY
-            || api.kind() == raml.NodeKindMap.RAML_KIND_EXTENSION
+        api.kind() == raml.NodeKindMap.NODE_KIND_API
+            || api.kind() == raml.NodeKindMap.NODE_KIND_OVERLAY
+            || api.kind() == raml.NodeKindMap.NODE_KIND_EXTENSION
+            || api.kind() == raml.NodeKindMap.NODE_KIND_API_08
         )){
-        let baseUri = (<raml.Api>api).baseUri();
+        let baseUri = (<raml.Api10|raml.Api08>api).baseUri();
         if(baseUri){
             baseUri = baseUri.trim();
             if(baseUri.charAt(baseUri.length-1)=="/"&& uri && uri.charAt(0)=="/"){
@@ -1168,3 +1936,22 @@ export class TemplateReference implements raml.TemplateReference{
 }
 
 type fragmentConstructor = (specBody:any,collection?:ti.IParsedTypeCollection)=> raml.Fragment;
+
+export class GlobalSchema extends Proxy<api08.GlobalSchema> implements raml.GlobalSchema{
+
+    name(){
+        return this.json.name;
+    }
+
+    schemaValue(){
+        return this.json.value;
+    }
+
+    sourceMap(){
+        return <ti.ElementSourceInfo>this.json.sourceMap;
+    }
+
+    kind(){
+        return raml.NodeKindMap.NODE_KIND_GLOBAL_SCHEMA_08;
+    }
+}
