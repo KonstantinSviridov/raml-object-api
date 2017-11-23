@@ -746,6 +746,10 @@ export class PropertyInfo implements tsInterfaces.IPropertyInfo {
         return this.isAdditionalProp ? <restr.AdditionalPropertyIs>this._matches : null;
     }
 
+    annotations(){
+        return this._matches ? this._matches.annotations() : [];
+    }
+
 }
 
 export abstract class AbstractType implements tsInterfaces.IParsedType, tsInterfaces.IHasExtra, tsInterfaces.HasSource {
@@ -1700,7 +1704,38 @@ export abstract class AbstractType implements tsInterfaces.IParsedType, tsInterf
     }
 
     scalarsAnnotations(): {[key:string]:metaInfo.Annotation[][]}{
-        return {};
+        return this.sAnnotations(this.meta());
+    }
+
+    declaredScalarsAnnotations(): {[key:string]:metaInfo.Annotation[][]}{
+        return this.sAnnotations(this.declaredFacets());
+    }
+
+    private sAnnotations(facets:tsInterfaces.ITypeFacet[]): {[key:string]:metaInfo.Annotation[][]}{
+        facets = facets.filter(x=>
+            x.kind()!=tsInterfaces.MetaInformationKind.FacetDeclaration
+            && x.kind()!=tsInterfaces.MetaInformationKind.Example
+            && x.kind()!=tsInterfaces.MetaInformationKind.Examples
+            && x.facetName() != "propertyIs");
+
+        let result: {[key:string]:metaInfo.Annotation[][]} = {};
+        for(let f of facets){
+            const annotations = f.annotations();
+            if(!annotations||!annotations.length){
+                continue;
+            }
+            result[f.facetName()] = [annotations.map(x=>{
+                let a = new metaInfo.Annotation(x.name(),x.value(),(<metaInfo.Annotation>x).getPath());
+                a.setOwnerFacet(f);
+                return a;
+            })];
+        }
+        if(this.supertypeAnnotations&&this.supertypeAnnotations.length){
+            result['type'] = this.supertypeAnnotations.map(x=>{
+                return Object.keys(x).map(y=>new metaInfo.Annotation(x[y].name(),x[y].value(),(<metaInfo.Annotation>x[y]).getPath()));
+            });
+        }
+        return result;
     }
 
     componentType(): tsInterfaces.IParsedType{
@@ -1961,7 +1996,7 @@ export abstract class AbstractType implements tsInterfaces.IParsedType, tsInterf
      * @param clazz
      * @returns {any}
      */
-    metaOfType<T>(clazz: {new(v: any, x?: any): T}): T[] {
+    metaOfType<T>(clazz: {new(v: any, x?: any, p?: string): T}): T[] {
         return <any>this.meta().filter(x => x instanceof clazz);
     }
 

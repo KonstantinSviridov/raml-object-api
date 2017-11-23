@@ -27,6 +27,14 @@ export class JsonSerializer{
         }
     }
 
+    private serializationOptions():typeExpander.Options{
+        let result:typeExpander.Options = {};
+        for(let key of Object.keys(this.options)){
+            result[key] = this.options[key];
+        }
+        return result;
+    }
+
     serialize(_node:raml.Fragment|raml.Api08):Object{
         let nodeKind = _node.kind();
         let ramlVersion:string;
@@ -277,7 +285,7 @@ export class JsonSerializer{
             // }
             return result
         }
-        let t = this.serializeTypeDeclaration(bodyType,false);
+        let t = this.serializeTypeDeclaration(bodyType,false,x.isInsideTemplate());
         if(!t.name){
             t.name = paramName;
         }
@@ -358,6 +366,14 @@ export class JsonSerializer{
         if(this.options.serializeMetadata&&node.metadata()){
             result.__METADATA__ = node.metadata();
         }
+        if(node.isInsideTemplate()){
+            let pPart = node.parametrizedPart();
+            if(pPart){
+                for(let key of Object.keys(pPart)){
+                    result[key] = pPart[key];
+                }
+            }
+        }
         return result;
     }
 
@@ -368,7 +384,7 @@ export class JsonSerializer{
         if(this.options.serializeMetadata&&node.metadata()){
             result.__METADATA__ = node.metadata();
         }
-        if(node.allowParametrizedKeys()){
+        if(node.isInsideTemplate()){
             let pPart = node.parametrizedPart();
             if(pPart){
                 Object.keys(pPart).forEach(x=>result[x]=pPart[x]);
@@ -428,7 +444,7 @@ export class JsonSerializer{
             // }
             return result
         }
-        let t = this.serializeTypeDeclaration(bodyType);
+        let t = this.serializeTypeDeclaration(bodyType,false,x.isInsideTemplate());
         if(!t.name){
             t.name = mimeType;
         }
@@ -891,8 +907,11 @@ export class JsonSerializer{
         return result;
     }
 
-    serializeTypeDeclaration(node:ti.IParsedType,isAnnotaionType=false):datamodel.TypeDeclaration{
-        return new typeExpander.TypeExpander(this.options).serializeType(node,isAnnotaionType);
+    serializeTypeDeclaration(node:ti.IParsedType,isAnnotaionType=false,isInsideTemplate=false):datamodel.TypeDeclaration{
+        let options = this.serializationOptions();
+        options.isAnnotationType = isAnnotaionType;
+        options.isInsideTemplate = isInsideTemplate;
+        return new typeExpander.TypeExpander(options).serializeType(node);
     }
 
     serializeTemplateReference(node:raml.TemplateReference):methods.TemplateReference{

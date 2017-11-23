@@ -47,10 +47,14 @@ export interface IAnnotated {
     owningFragment(): IAnnotated
 
     kind(): string
+
+    isInsideTemplate():boolean
 }
 
 export interface HasSource10 extends IAnnotated, tsInterfaces.HasSource {
     metadata():any
+
+    parametrizedPart():any
 }
 
 export interface HasSource08 extends tsInterfaces.HasSource {
@@ -58,9 +62,9 @@ export interface HasSource08 extends tsInterfaces.HasSource {
 
     kind():string
 
-    allowParametrizedKeys():boolean
-
     parametrizedPart():any
+
+    isInsideTemplate():boolean
 }
 
 export interface SecuritySchemeDefinition10 extends HasSource10 {

@@ -29,16 +29,48 @@ let normalizeExample = function (e) {
     let ex = JSON.parse(JSON.stringify(e));
     delete ex.name;
     delete ex.annotations;
+    delete ex.scalarsAnnotations;
     serializeAnnotations(e,ex);
     return ex;
 };
 
 function serializeAnnotations(t:{
     annotations?: common.AnnotationInstance[]
+    scalarsAnnotations?: { [key: string]: common.AnnotationInstance[][] };
 }, res: any) {
     if (t.annotations) {
         for (let x of t.annotations) {
             res[`(${x.name})`] = x.value;
+        }
+    }
+    if(t.scalarsAnnotations){
+        for(let pName of Object.keys(t.scalarsAnnotations)){
+            let aArr = t.scalarsAnnotations[pName];
+            let val = res[pName];
+            if(Array.isArray(val)){
+                for(let i = 0 ; i < val.length && i < aArr.length ; i++){
+                    if(!aArr[i].length){
+                        continue;
+                    }
+                    val[i] = {
+                        value: val[i]
+                    };
+                    for(let a of aArr[i]){
+                        val[i][`(${a.name})`] = a.value;
+                    }
+                }
+            }
+            else if(aArr.length){
+                let sAnnotations = aArr[0];
+                if(sAnnotations.length){
+                    res[pName] = {
+                        value: val
+                    };
+                    for(let a of sAnnotations){
+                        res[pName][`(${a.name})`] = a.value;
+                    }
+                }
+            }
         }
     }
 }
@@ -84,7 +116,11 @@ function normalizeType(i: datamodel.TypeReference10) {
                 }
                 delete res.examples;
             }
-            else {
+            else if(!t.examples.filter(x=>x.name!=null).length) {
+                //support for sequence instead of map in 'examples'
+                res.examples = t.examples.map(x=>normalizeExample(x));
+            }
+            else{
                 let examples = {};
                 t.examples.forEach(e => {
                     let name = e.name;
@@ -101,7 +137,6 @@ function normalizeType(i: datamodel.TypeReference10) {
                 }
             }
         }
-        serializeAnnotations(t, res);
         let properties = (<datamodel.ObjectTypeDeclaration>t).properties;
         if (properties && properties.length) {
             res.properties = {};
@@ -114,7 +149,7 @@ function normalizeType(i: datamodel.TypeReference10) {
         }
         let items = (<datamodel.ArrayTypeDeclaration>t).items;
         if(items && items.length){
-            res.items = normalizeType(items[0]);
+            res.items = res.items.map(x=>normalizeType(x));
         }
         let options = (<datamodel.TypeDeclaration>t).anyOf;
         if(options && options.length){
@@ -125,6 +160,7 @@ function normalizeType(i: datamodel.TypeReference10) {
                 res[x.name] = x.value;
             }
         }
+        serializeAnnotations(t, res);
         removeDefaults(res,t);
         return res;
     }
@@ -182,7 +218,7 @@ export abstract class Annotated{
 
 export abstract class Proxy<JSONType extends common.Annotable>  {
 
-    constructor(public readonly json: JSONType, public readonly parent: Proxy<any>, protected _allowParametrizedKeys:boolean=false) {
+    constructor(public readonly json: JSONType, public readonly parent: Proxy<any>) {
     }
 
     abstract name();
@@ -220,12 +256,8 @@ export abstract class Proxy<JSONType extends common.Annotable>  {
         return this;
     }
 
-    allowParametrizedKeys(){
-        return this._allowParametrizedKeys;
-    }
-
     parametrizedPart():any{
-        if(!this._allowParametrizedKeys){
+        if(!this.isInsideTemplate()){
             return null;
         }
         let result = {};
@@ -234,12 +266,16 @@ export abstract class Proxy<JSONType extends common.Annotable>  {
         }
         return result;
     }
+
+    isInsideTemplate():boolean{
+        return this.parent ? this.parent.isInsideTemplate(): false;
+    }
 }
 
 export abstract class Proxy10<JSONType extends common.Annotable> extends Proxy<JSONType> implements ti.IAnnotatedElement, raml.HasSource10{
 
-    constructor(json: JSONType, parent: Proxy10<any>, allowParametrizedKeys=false) {
-        super(json,parent,allowParametrizedKeys);
+    constructor(json: JSONType, parent: Proxy10<any>) {
+        super(json,parent);
     }
 
     private _annotations;
@@ -432,28 +468,28 @@ export class UsesDeclaration extends Proxy10<common.UsesDeclaration> implements 
     }
 }
 
-export function mapArray<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>, apk:boolean): T}): T[] {
+export function mapArray<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>): T}): T[] {
     let obj = parent.json[property];
     if (!obj) {
         obj = [];
     }
-    return obj.map(x => x == null ? x : new clazz(x, parent, parent.allowParametrizedKeys()));
+    return obj.map(x => x == null ? x : new clazz(x, parent));
 }
-export function mapArrayMaps<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>, apk:boolean): T}): T[] {
+export function mapArrayMaps<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>): T}): T[] {
     let obj = parent.json[property];
     if (!obj) {
         obj = [];
     }
-    return obj.map(x => new clazz(x, parent, parent.allowParametrizedKeys()));
+    return obj.map(x => new clazz(x, parent));
 }
-export function mapMap<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>, apk:boolean): T}): T[] {
+export function mapMap<T extends Proxy<any>>(parent: Proxy<any>, property: string, clazz: {new(v: any, parent: Proxy<any>): T}): T[] {
     let obj = parent.json[property];
     if (!obj) {
         obj = {};
     }
     let res: T[] = [];
     Object.keys(obj).forEach(x => {
-        res.push(new clazz(obj[x], parent, parent.allowParametrizedKeys()))
+        res.push(new clazz(obj[x], parent))
     });
     return res;
 }
@@ -743,10 +779,18 @@ function bodies(t: MethodBase10<any>|Response10) {
         return [];
     }
     let result: Body10[] = []
-    for(let x of t.json.body){
+    for(let x of t.json.body) {
         let name = x.name;
         let td = normalizeType(x);
-        let parsedType = ts.parseJsonTypeWithCollection("", td, <any>t.owningFragment(), true);
+        let ignoreTypeAttr = false;
+        if (t.isInsideTemplate()) {
+            let tArr = Array.isArray(x.type) ? x.type : [x.type];
+            if (tArr.filter(y => (typeof y === "string")
+                    && (y.indexOf("<<") >= 0)).length) {
+                ignoreTypeAttr = true;
+            }
+        }
+        let parsedType = ts.parseJsonTypeWithCollection("", td, <any>t.owningFragment(), true,false,false,ignoreTypeAttr);
         let meta:any;
         if(!parsedType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata).length){
             meta = x.__METADATA__;
@@ -866,6 +910,10 @@ export class Body10 extends Annotated implements raml.Body10 {
     meta(){
         return this._meta;
     }
+
+    isInsideTemplate():boolean{
+        return this.owner.isInsideTemplate();
+    }
 }
 
 export class BodyLike08 extends Proxy<bodies08.BodyLike08> implements raml.BodyLike08 {
@@ -955,12 +1003,16 @@ export class Parameter10 extends  Annotated implements raml.Parameter10 {
     meta():any{
         return this._meta;
     }
+
+    isInsideTemplate():boolean{
+        return this.owner.isInsideTemplate();
+    }
 }
 
 export class Parameter08 extends Proxy<parameters08.Parameter08> implements raml.Parameter08 {
 
     constructor(json: parameters08.Parameter08, parent: Proxy<any>, protected _location:string) {
-        super(json,parent,parent.allowParametrizedKeys());
+        super(json,parent);
     }
 
     name(){
@@ -1271,7 +1323,7 @@ export class Method08 extends MethodBase08<methods08.Method08> implements raml.M
 export class Trait10 extends MethodBase10<methods.Trait10> implements raml.Trait10 {
 
     constructor(json:methods.Trait10, parent: Proxy10<any>) {
-        super(json,parent,true);
+        super(json,parent);
     }
 
     securedBy(): raml.SecuredBy[] {
@@ -1289,12 +1341,16 @@ export class Trait10 extends MethodBase10<methods.Trait10> implements raml.Trait
     kind(){
         return raml.NodeKindMap.NODE_KIND_TRAIT;
     }
+
+    isInsideTemplate():boolean{
+        return true;
+    }
 }
 
 export class Trait08 extends MethodBase08<methods08.Trait> implements raml.Trait08 {
 
     constructor(json:methods08.Trait, parent: Proxy<any>) {
-        super(json,parent,true);
+        super(json,parent);
     }
 
     securedBy(): raml.SecuredBy08[] {
@@ -1315,6 +1371,11 @@ export class Trait08 extends MethodBase08<methods08.Trait> implements raml.Trait
 
     displayName(){
         return this.json.displayName;
+    }
+
+
+    isInsideTemplate():boolean{
+        return true;
     }
 }
 
@@ -1620,7 +1681,7 @@ export class Resource08 extends ResourceBase08<resources08.Resource08> implement
 export class ResourceType10 extends ResourceBase10<resources.ResourceType10> implements raml.ResourceType10 {
 
     constructor(json:resources.ResourceType10, parent: Proxy10<any>) {
-        super(json,parent,true);
+        super(json,parent);
     }
 
     securedBy(): raml.SecuredBy[] {
@@ -1638,12 +1699,16 @@ export class ResourceType10 extends ResourceBase10<resources.ResourceType10> imp
     kind(){
         return raml.NodeKindMap.NODE_KIND_RESOURCE_TYPE;
     }
+
+    isInsideTemplate():boolean{
+        return true;
+    }
 }
 
 export class ResourceType08 extends ResourceBase08<resources08.ResourceType08> implements raml.ResourceType08 {
 
     constructor(json:resources08.ResourceType08, parent: Proxy<any>) {
-        super(json,parent,true);
+        super(json,parent);
     }
 
     securedBy(): raml.SecuredBy08[] {
@@ -1660,6 +1725,10 @@ export class ResourceType08 extends ResourceBase08<resources08.ResourceType08> i
 
     kind(){
         return raml.NodeKindMap.NODE_KIND_RESOURCE_TYPE_08;
+    }
+
+    isInsideTemplate():boolean{
+        return true;
     }
 }
 

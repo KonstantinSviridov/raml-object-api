@@ -98,7 +98,7 @@ export class Usage extends MetaInfo{
 }
 export class Annotation extends MetaInfo implements tsInterfaces.IAnnotation{
 
-    constructor(name: string,value:any){
+    constructor(name: string,value:any,private path:string,private _index:number=-1){
         super(name,value)
     }
 
@@ -173,6 +173,10 @@ export class Annotation extends MetaInfo implements tsInterfaces.IAnnotation{
 
     setOwnerFacet(ownerFacet:tsInterfaces.ITypeFacet){
         this._ownerFacet = ownerFacet;
+    }
+
+    getPath():string{
+        return this.path;
     }
 }
 export class FacetDeclaration extends MetaInfo{
@@ -314,7 +318,7 @@ export class Example extends MetaInfo{
                         if(typeof(propObj)=="object") {
                             Object.keys(propObj).forEach(key=> {
                                 if (key.charAt(0) == '(' && key.charAt(key.length - 1) == ')') {
-                                    var a = new Annotation(key.substring(1, key.length - 1), propObj[key]);
+                                    var a = new Annotation(key.substring(1, key.length - 1), propObj[key], key);
                                     var aRes = a.validateSelf(registry, true);
                                     ts.setValidationPath(aRes,{
                                             name: "example",
@@ -383,7 +387,7 @@ export class Example extends MetaInfo{
                 for(var ua of usedAnnotations) {
                     var aValue = val[ua];
                     var aName = ua.substring(1,ua.length-1);
-                    var aInstance = new Annotation(aName,aValue);
+                    var aInstance = new Annotation(aName,aValue,ua);
                     status.addSubStatus(aInstance.validateSelf(registry,true));
                 }
             }
@@ -522,7 +526,7 @@ export class Examples extends MetaInfo{
                         if (typeof exampleObj=="object"&&exampleObj.value) {
                             Object.keys(exampleObj).forEach(key=> {
                                 if (key.charAt(0) == '(' && key.charAt(key.length - 1) == ')') {
-                                    var a = new Annotation(key.substring(1, key.length - 1), v[x][key]);
+                                    var a = new Annotation(key.substring(1, key.length - 1), v[x][key], key);
                                     var aRes = a.validateSelf(registry,true);
                                     ts.setValidationPath(aRes,
                                         {name:"examples",child:{name: x, child: {name: key}}});
@@ -585,7 +589,7 @@ export class Examples extends MetaInfo{
                 vp = {name: "value"};
                 Object.keys(propObj).forEach(key=> {
                     if (key.charAt(0) == '(' && key.charAt(key.length - 1) == ')') {
-                        var a = new Annotation(key.substring(1, key.length - 1), exampleObj[propName][key]);
+                        var a = new Annotation(key.substring(1, key.length - 1), exampleObj[propName][key],key);
                         var aRes = a.validateSelf(registry, true);
                         ts.setValidationPath(aRes,
                             {
@@ -686,6 +690,30 @@ export class SourceMap extends MetaInfo{
         return tsInterfaces.MetaInformationKind.SourceMap;
     }
 }
+
+export class TypeAttributeValue extends MetaInfo{
+    constructor(value:any){
+        super("typeAttributeValue",value);
+    }
+
+    private static CLASS_IDENTIFIER_TypeAttributeValue = "metainfo.TypeAttributeValue.lite";
+
+    public getClassIdentifier() : string[] {
+        var superIdentifiers:string[] = super.getClassIdentifier();
+        return superIdentifiers.concat(TypeAttributeValue.CLASS_IDENTIFIER_TypeAttributeValue);
+    }
+
+    public static isInstance(instance: any): instance is TypeAttributeValue {
+        return instance != null && instance.getClassIdentifier
+            && typeof(instance.getClassIdentifier) == "function"
+            && _.contains(instance.getClassIdentifier(), TypeAttributeValue.CLASS_IDENTIFIER_TypeAttributeValue);
+    }
+
+    kind() : tsInterfaces.MetaInformationKind {
+        return tsInterfaces.MetaInformationKind.TypeAttributeValue;
+    }
+}
+
 
 export class ParserMetadata extends MetaInfo{
     constructor(value:Object){
