@@ -871,7 +871,7 @@ function parse(
             supers.push(typeExpressions.parseToType(""+x.value(),r, n))
         })
         var res=ts.derive(name,supers);
-        if (r instanceof AccumulatingRegistry){
+        if (AccumulatingRegistry.isInstance(r)){
             res = contributeToAccumulatingRegistry(res, r);
         }
         return res;
@@ -889,7 +889,7 @@ function parse(
         }
     }
     var typePropAnnotations:tsInterfaces.IAnnotation[][] = [];
-    if (!tp||ignoreTypeAttr){
+    if (!tp||(!tp.children().length&&!tp.value())||ignoreTypeAttr){
         if (defaultsToAny){
             if (n.childWithKey("properties")) {
                 superTypes = [ts.OBJECT];

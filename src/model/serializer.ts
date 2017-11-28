@@ -39,6 +39,7 @@ export class JsonSerializer{
         let nodeKind = _node.kind();
         let ramlVersion:string;
         let specBody:any = {};
+        let depth = this.checkIfNeedExpand(nodeKind);
         if(nodeKind==raml.NodeKindMap.NODE_KIND_API_08){
             const apiNode = <raml.Api08>_node;
             specBody = this.serializeApi08(apiNode,specBody);
@@ -90,7 +91,19 @@ export class JsonSerializer{
             specification: specBody,
             errors: _node.errors()
         };
+        this.options.typeExpansionRecursionDepth = depth;
         return result;
+    }
+
+    private checkIfNeedExpand(kind:string):number{
+        let d = this.options.typeExpansionRecursionDepth;
+        if(kind != raml.NodeKindMap.NODE_KIND_LIBRARY
+            && kind != raml.NodeKindMap.NODE_KIND_EXTENSION
+            && kind != raml.NodeKindMap.NODE_KIND_OVERLAY
+            && kind != raml.NodeKindMap.NODE_KIND_API){
+            this.options.typeExpansionRecursionDepth = -1;
+        }
+        return d;
     }
 
     serializeFragment(node:raml.Fragment,result:common.FragmentDeclaration){
@@ -414,36 +427,37 @@ export class JsonSerializer{
     serializeBody(x:raml.Body10):datamodel.TypeDeclaration {
         const mimeType = x.mimeType();
         const bodyType = x.type();
-        if(bodyType.name()&&this.options.typeExpansionRecursionDepth<0){
-            const result:any = {
-                name: mimeType,
-                displayName: mimeType,
-                type: [ bodyType.name() ],
-                typePropertyKind: "TYPE_EXPRESSION",
-                __METADATA__: {
-                    primitiveValuesMeta: {
-                        displayName: {
-                            calculated: true
-                        }
-                    }
-                }
-            };
-            let typeMeta = bodyType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata);
-            if(x.meta()){
-                result.__METADATA__ = x.meta();
-            }
-            else if(bodyType.name().indexOf("<<")>=0&&typeMeta.length){
-                result.__METADATA__ = typeMeta[0].value();
-            }
-            // if(bodyType.name().indexOf(">>")>0) {
-            //     bodyType.allFacets().forEach(x => {
-            //         if (x.kind() == ti.MetaInformationKind.SourceMap) {
-            //             result[x.facetName()] = x.value();
-            //         }
-            //     });
-            // }
-            return result
-        }
+        // if(this.options.typeExpansionRecursionDepth<0
+        //     && bodyType.superTypes().filter(x=>x.name()=="union"||x.name()=="array"||x.name()==null).length==0){
+        //     const result:any = {
+        //         name: mimeType,
+        //         displayName: mimeType,
+        //         type: bodyType.superTypes().map(x=>x.name()),
+        //         typePropertyKind: "TYPE_EXPRESSION",
+        //         __METADATA__: {
+        //             primitiveValuesMeta: {
+        //                 displayName: {
+        //                     calculated: true
+        //                 }
+        //             }
+        //         }
+        //     };
+        //     let typeMeta = bodyType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata);
+        //     if(x.meta()){
+        //         result.__METADATA__ = x.meta();
+        //     }
+        //     else if(bodyType.name().indexOf("<<")>=0&&typeMeta.length){
+        //         result.__METADATA__ = typeMeta[0].value();
+        //     }
+        //     // if(bodyType.name().indexOf(">>")>0) {
+        //     //     bodyType.allFacets().forEach(x => {
+        //     //         if (x.kind() == ti.MetaInformationKind.SourceMap) {
+        //     //             result[x.facetName()] = x.value();
+        //     //         }
+        //     //     });
+        //     // }
+        //     return result
+        // }
         let t = this.serializeTypeDeclaration(bodyType,false,x.isInsideTemplate());
         if(!t.name){
             t.name = mimeType;

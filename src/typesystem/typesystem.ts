@@ -1747,7 +1747,22 @@ export abstract class AbstractType implements tsInterfaces.IParsedType, tsInterf
             return components[0].value();
         }
         else{
-            let ct = derive(null,components.map(x=>x.value()));
+            let componentTypes:AbstractType[] = components.map(x=>x.value());
+            let componentTypes1:AbstractType[] = [].concat(componentTypes);
+            for(let x of componentTypes1){
+                let toRemove:AbstractType[] = []
+                for(let y of componentTypes){
+                    if(x==y){
+                        continue;
+                    }
+                    if(y.isAssignableFrom(x)){
+                        toRemove.push(y);
+                    }
+                }
+                componentTypes = componentTypes.filter(y=>toRemove.indexOf(y)<0);
+            }
+
+            let ct = derive(null,componentTypes);
             return ct;
         }
     }

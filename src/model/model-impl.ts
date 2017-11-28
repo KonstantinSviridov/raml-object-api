@@ -790,7 +790,7 @@ function bodies(t: MethodBase10<any>|Response10) {
                 ignoreTypeAttr = true;
             }
         }
-        let parsedType = ts.parseJsonTypeWithCollection("", td, <any>t.owningFragment(), true,false,false,ignoreTypeAttr);
+        let parsedType = ts.parseJsonTypeWithCollection(name, td, <any>t.owningFragment(), true,false,false,ignoreTypeAttr);
         let meta:any;
         if(!parsedType.declaredFacets().filter(x=>x.kind()==ti.MetaInformationKind.ParserMetadata).length){
             meta = x.__METADATA__;
@@ -1949,7 +1949,6 @@ export function completeRelativeUri(res:raml.Resource10|raml.Resource08):string{
         parent = res.parentResource();
     }
     while (parent);
-    uri = uri.replace(/\/\//g,'/');
     return uri;
 }
 
@@ -1964,7 +1963,6 @@ export function absoluteUri(res:raml.Resource10|raml.Resource08, fragmentSrc:ram
             parent = res.parentResource();
         }
         while (parent);
-        uri = uri.replace(/\/\//g, '/');
     }
     let api:raml.Api08|raml.IAnnotated;
     if(fragmentSrc.kind()==raml.NodeKindMap.NODE_KIND_RESOURCE_08){
@@ -1982,8 +1980,8 @@ export function absoluteUri(res:raml.Resource10|raml.Resource08, fragmentSrc:ram
         let baseUri = (<raml.Api10|raml.Api08>api).baseUri();
         if(baseUri){
             baseUri = baseUri.trim();
-            if(baseUri.charAt(baseUri.length-1)=="/"&& uri && uri.charAt(0)=="/"){
-                uri = uri.substring(1);
+            if(res) {
+                baseUri = baseUri.replace(/\/+$/, "");
             }
             uri = baseUri + uri;
         }

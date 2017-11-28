@@ -58,7 +58,8 @@ export class PropertyEntry implements Entry{
                 protected _type:TypeEntry,
                 protected _required:boolean,
                 protected isFacet=false,
-                protected _metadata:any){
+                protected _metadata:any,
+                protected _src:IPropertyInfo=null){
 
     }
 
@@ -66,10 +67,32 @@ export class PropertyEntry implements Entry{
         return this._original ? this._original.name() : this._name;
     }
 
+    original(){
+        return this._original;
+    }
+
     append(te:GeneralTypeEntry,bd:BranchingData):void{
-        let etp = new GeneralTypeEntry(this._type.original(),[],null,[], [], this._type.name());
-        this._type.append(etp,bd);
-        let newPropEntry = new PropertyEntry(this._original,this._name,etp,this.required(),this.isFacet,this.metadata());
+        let propType:TypeEntry;
+        if(this._type.isUnion()){
+            const union = (<UnionTypeEntry>this._type);
+            let optionId = bd.branchingOption(union.branchId());
+            let option = union.options()[optionId];
+            if(option.isBuiltIn()){
+                propType = option;
+            }
+            else {
+                let etp = new GeneralTypeEntry(option.original(), [], null, [], [], option.name());
+                option.append(etp, bd);
+                propType =  etp;
+            }
+        }
+        else {
+            let etp = new GeneralTypeEntry(this._type.original(), [], null, [], [], this._type.name());
+            this._type.append(etp,bd);
+            propType =  etp;
+        }
+
+        let newPropEntry = new PropertyEntry(this._original,this._name,propType,this.required(),this.isFacet,this.metadata(),this._src);
         if(this.isFacet){
             te.addFacet(newPropEntry);
         }
@@ -99,6 +122,14 @@ export class PropertyEntry implements Entry{
 
     annotations(){
         return this._original ? this._original.annotations() : [];
+    }
+
+    source(){
+        let src = this._original || this._src;
+        if(!src){
+            return null;
+        }
+        return new GeneralTypeEntry(src.declaredAt(),[],null,[],[],null);
     }
 }
 
@@ -160,6 +191,8 @@ export class AbstractTypeEntry implements TypeEntry{
     protected _branchingRegistry:BranchingRegistry;
 
     private _id:string;
+
+    protected _typeAttrVal:string;
 
     id(){
         return this._id;
@@ -228,7 +261,9 @@ export class AbstractTypeEntry implements TypeEntry{
 
     addSuperType(type:TypeEntry):void{
         this._superTypes = this._superTypes || [];
-        this._superTypes.push(type);
+        if(this._superTypes.indexOf(type)<0) {
+            this._superTypes.push(type);
+        }
     }
 
     superTypes():TypeEntry[]{
@@ -311,6 +346,11 @@ export class AbstractTypeEntry implements TypeEntry{
     }
 
     schemaPath():string{
+        if(!this.original()||!this.original().superTypes().filter(x=>{
+            return x.superTypes().length==1 && x.superTypes()[0].name()=="external"
+            }).length){
+            return null;
+        }
         let schPath = _.find(this.meta(),x=>x.kind()==tsInterfaces.MetaInformationKind.SchemaPath);
         return schPath && schPath.value();
     }
@@ -332,14 +372,11 @@ export class AbstractTypeEntry implements TypeEntry{
     }
 
     typeAttributeValue():any{
-        if(!this._original){
-            return null;
-        }
-        let tAttr = _.find(this._original.declaredFacets(),x=>x.kind()==tsInterfaces.MetaInformationKind.TypeAttributeValue);
-        if(tAttr){
-            return tAttr.value();
-        }
-        return null;
+        return typeAttributeValue(this._original)||this._typeAttrVal;
+    }
+
+    setTypeAttributeValue(val:string){
+        this._typeAttrVal = val;
     }
 }
 
@@ -400,9 +437,14 @@ export class GeneralTypeEntry extends AbstractTypeEntry{
         // }
         // else {
             for(let st of this.superTypes()){
-                if(!st.isUnion()) {
-                    result = result.concat(st.possibleBuiltInTypes(occured));
-                }
+                //if(!st.isUnion()) {
+                result = result.concat(st.possibleBuiltInTypes(occured));
+                // }
+                // else{
+                //     for(let o of (<UnionTypeEntry>st).options()){
+                //         result = result.concat(o.possibleBuiltInTypes(occured));
+                //     }
+                // }
             }
             let map:{[key:string]:boolean} = {};
             result.forEach(x=>map[x]=true);
@@ -454,6 +496,9 @@ export class GeneralTypeEntry extends AbstractTypeEntry{
             te.setIsRecursionPoint();
             return;
         }
+        if(this._typeAttrVal!=null) {
+            te.setTypeAttributeValue(this._typeAttrVal);
+        }
         bd.typeMap().addType(this);
         try {
             if (this._componentType) {
@@ -492,7 +537,7 @@ export class GeneralTypeEntry extends AbstractTypeEntry{
                             pType.addSuperType(x.type());
                             required = required || x.required();
                         });
-                        let mergedProp = new PropertyEntry(null,pName,pType,required,false,null);
+                        let mergedProp = new PropertyEntry(null,pName,pType,required,false,null,pArr[0].original());
                         mergedProp.append(te, bd);
                     }
                 }
@@ -504,7 +549,9 @@ export class GeneralTypeEntry extends AbstractTypeEntry{
             }
             for (let st of this.superTypes()) {
                 st.append(te, bd);
-                te.addSuperType(st);
+                if(!st.isUnion()) {
+                    te.addSuperType(st);
+                }
             }
         }
         finally {
@@ -514,6 +561,10 @@ export class GeneralTypeEntry extends AbstractTypeEntry{
 
     name(){
         return this._name || super.name();
+    }
+
+    setName(n:string){
+        return this._name = n;
     }
 
     isRecursionPoint():boolean{
@@ -565,6 +616,12 @@ export class UnionTypeEntry extends AbstractTypeEntry{
     append(te:GeneralTypeEntry,bd:BranchingData):void{
         let optionId = bd.branchingOption(this._branchId);
         let option = this._options[optionId];
+        if(!option.isBuiltIn()&&option.name()!=null){
+            te.setName(option.name());
+        }
+        else{
+            te.setName(this.name());
+        }
         option.append(te,bd);
     }
 
@@ -665,9 +722,11 @@ export class BasicTypeMap implements TypeMap{
     }
 
     removeType(t:AbstractTypeEntry):void{
-        let n = t.id();
-        if(n){
-            delete this.typeMapById[n];
+        if(t.id()){
+            delete this.typeMapById[t.id()];
+        }
+        if(t.name()){
+            delete this.typeMapByName[t.name()];
         }
     }
 
@@ -779,6 +838,8 @@ class BasicBranchingRegistry implements BranchingRegistry{
 
 export interface Options{
 
+    typeCollection?: tsInterfaces.IParsedTypeCollection;
+
     typeExpansionRecursionDepth?: number;
 
     serializeMetadata?: boolean;
@@ -845,6 +906,10 @@ export class TypeExpander {
             return result;
         }
         let d = 0;
+        //unwrapping library chaining
+        if(!t.name()&&t.isEmpty()&&t.superTypes().length==2&&t.superTypes().filter(x=>x.name()!="unknown").length==1){
+            t = _.find(t.superTypes(),x=>x.name()!="unknown");
+        }
         if(t.name() && occured.hasTypeByName(t.name())){
             if(typeExpansionRecursionDepth<=0) {
                 return occured.typeByName(t.name());
@@ -936,6 +1001,9 @@ export class TypeExpander {
                 result.addFacet(fe);
             }
         }
+        if(typeExpansionRecursionDepth==this.options.typeExpansionRecursionDepth) {
+            occured.removeType(result);
+        }
         return result;
     }
 
@@ -993,7 +1061,7 @@ export class TypeExpander {
 
         let entries:GeneralTypeEntry[] = [];
         for(let bd of reg.possibleBranches(typeMap)){
-            let branchEntry = new GeneralTypeEntry(null,[],null,[], [], e.name());
+            let branchEntry = new GeneralTypeEntry(null,[],null,[], [], null);
             e.append(branchEntry,bd);
             entries.push(branchEntry);
         }
@@ -1009,28 +1077,71 @@ export class TypeExpander {
             return;
         }
         if (!result.sourceMap) {
+            let sourceMap:any;
             let src = te.original() && te.original().getExtra("SOURCE");
             if (src) {
-                // let llSrc: ll.ILowLevelASTNode;
+                // let llSrc: ll.ICompilationUnit;
                 // if (hlImpl.LowLevelWrapperForTypeSystem.isInstance(src)) {
-                //     llSrc = src.node();
+                //     llSrc = src.node().unit();
                 // }
                 // else if (hlImpl.ASTNodeImpl.isInstance(src)) {
-                //     llSrc = src.lowLevel();
+                //     let schemaPath:string;
+                //     if(te.isExternal()){
+                //         schemaPath = jsonSerializerHL.getSchemaPath(src);
+                //         if(schemaPath){
+                //             result.schemaPath = schemaPath;
+                //             sourceMap = {
+                //                 path: schemaPath
+                //             };
+                //         }
+                //     }
+                //     if(!sourceMap){
+                //         sourceMap = {
+                //             path: hlImpl.actualPath(src)
+                //         };
+                //     }
                 // }
-                // else
                 if (src.obj && src.obj.sourceMap) {
                     result.sourceMap = src.obj.sourceMap;
                 }
                 // if (llSrc) {
-                //     result.sourceMap = {
-                //         path: llSrc.unit().path()
+                //     sourceMap = {
+                //         path: llSrc.path()
                 //     };
                 // }
+                if(sourceMap){
+                    this.spreadSources(result,sourceMap);
+                }
             }
         }
     }
 
+    spreadSources(result:any,src:any){
+        if(typeof  result !== "object"){
+            return;
+        }
+        else if(!result.sourceMap) {
+            result.sourceMap = src;
+        }
+        else{
+            return;
+        }
+        if(result.items){
+            result.items.forEach(x=>this.spreadSources(x,src));
+        }
+        if(result.anyOf){
+            result.anyOf.forEach(x=>this.spreadSources(x,src));
+        }
+        if(result.properties){
+            result.properties.forEach(x=>this.spreadSources(x,src));
+        }
+        if(result.facets){
+            result.facets.forEach(x=>this.spreadSources(x,src));
+        }
+        if(result.xml){
+            this.spreadSources(result.xml,src);
+        }
+    }
 
     protected dump(te: TypeEntry, expand: boolean): any {
 
@@ -1094,6 +1205,17 @@ export class TypeExpander {
                     else {
                         let dumpedOption = this.dump(o, expand);
                         this.appendSourceFromExtras(dumpedOption, ute);
+                        if(this.options.isInsideTemplate) {
+                            if (dumpedOption.name == te.name() && dumpedOption.type) {
+                                let dot = dumpedOption.type;
+                                if (dot.length && dot[0].indexOf("<<") >= 0) {
+                                    dumpedOption = dot[0];
+                                }
+                            }
+                            else if(dumpedOption.name&&dumpedOption.name.indexOf("<<")>=0){
+                                dumpedOption = dumpedOption.name;
+                            }
+                        }
                         anyOf.push(dumpedOption);
                     }
                 }
@@ -1107,8 +1229,24 @@ export class TypeExpander {
                 result.typePropertyKind = "INPLACE";
             }
             let gte = <GeneralTypeEntry>te;
-            if(this.options.isInsideTemplate && te.typeAttributeValue()) {
-                result.type = te.typeAttributeValue();
+            let typeAttrVal:any;
+            if(this.options.isInsideTemplate){
+                typeAttrVal = te.typeAttributeValue();
+                if(!typeAttrVal){
+                    let supertypes = te.original()&&te.original().superTypes();
+                    if(supertypes && supertypes.length==1 && supertypes[0].isUnknown()){
+                        let stName = supertypes[0].name();
+                        if(stName.indexOf("<<")>=0){
+                            typeAttrVal = stName;
+                        }
+                    }
+                }
+                if(typeAttrVal && ! Array.isArray(typeAttrVal)){
+                    typeAttrVal = [ typeAttrVal ];
+                }
+            }
+            if(typeAttrVal) {
+                result.type = typeAttrVal;
                 result.typePropertyKind = "TYPE_EXPRESSION";
             }
             else if (expand) {
@@ -1174,6 +1312,17 @@ export class TypeExpander {
                             dumpedComponentType.displayName = "items";
                             this.appendMeta(dumpedComponentType, "displayName", "calculated");
                         }
+                        if(this.options.isInsideTemplate) {
+                            if (dumpedComponentType.name == te.name() && dumpedComponentType.type) {
+                                let dot = dumpedComponentType.type;
+                                if (dot.length && dot[0].indexOf("<<") >= 0) {
+                                    dumpedComponentType = dot[0];
+                                }
+                            }
+                            else if(dumpedComponentType.name&&dumpedComponentType.name.indexOf("<<")>=0){
+                                dumpedComponentType = dumpedComponentType.name;
+                            }
+                        }
                         return dumpedComponentType;
                     }
                 });
@@ -1224,7 +1373,14 @@ export class TypeExpander {
     }
 
     private processExample(e, simplified: any[], examplesArr: any[]) {
-        let val = e.value();
+        let val;
+        if (e.isJSONString() || e.isYAML()) {
+            let asJSON = e.asJSON();
+            val = asJSON!=null ? asJSON : e.original();
+        }
+        else {
+            val = e.original();
+        }
         let needStringify = false;
         if (Array.isArray(val)) {
             for (let c of val) {
@@ -1282,7 +1438,7 @@ export class TypeExpander {
         if (te.original() && te.original().isUnion()) {
             return;
         }
-        if (!te.isUnknown()&&!this.sourceHasKey(te, "type")) {
+        if (!te.isUnknown()&&(te.original()&&!this.sourceHasKey(te, "type"))) {
             let byDefault = false;
             if (!Array.isArray(result.type) || !result.type.length) {
                 byDefault = true;
@@ -1314,12 +1470,20 @@ export class TypeExpander {
         }
         else {
             dumpedPropertyType = this.dump(propType, expand);
+            if(this.options.isInsideTemplate){
+                if(dumpedPropertyType.name!=null && dumpedPropertyType.name.indexOf("<<")>=0){
+                        dumpedPropertyType = {
+                            type: [ dumpedPropertyType.name ],
+                            typePropertyKind: "TYPE_EXPRESSION"
+                        };
+                }
+            }
             if (dumpedPropertyType.displayName == null || propType.name()) {
                 dumpedPropertyType.displayName = p.name();
                 this.appendMeta(dumpedPropertyType, "displayName", "calculated");
             }
         }
-        this.appendSourceFromExtras(dumpedPropertyType, gte);
+        this.appendSourceFromExtras(dumpedPropertyType, p.source()||gte);
         dumpedPropertyType.name = p.name();
         if (!isFacet) {
             dumpedPropertyType.required = p.required();
@@ -1377,6 +1541,9 @@ export class TypeExpander {
             else {
                 customFacets = te.original().customFacets()||[];
             }
+            // let map:any = {};
+            // te.original().allDefinedFacets().forEach(x=>map[x.name()]=true);
+            // customFacets = customFacets.filter(x=>map[x.facetName()]===true);
         }
         if(this.options.isInsideTemplate){
             let parametrized:tsInterfaces.ITypeFacet[] = [];
@@ -1565,4 +1732,15 @@ function isEmpty(t:tsInterfaces.IParsedType,ignoreSupertypesCount=false):boolean
         return true;
     });
     return meta.length==0;
+}
+
+function typeAttributeValue(t:tsInterfaces.IParsedType):any{
+    if(!t){
+        return null;
+    }
+    let tAttr = _.find(t.declaredFacets(),x=>x.kind()==tsInterfaces.MetaInformationKind.TypeAttributeValue);
+    if(tAttr){
+        return tAttr.value();
+    }
+    return null;
 }
