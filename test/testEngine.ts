@@ -42,30 +42,52 @@ export function processDir(o:Options){
     }
 }
 
-const skipped = [
-    "typePropertyKind",
-    "displayName"
-].map(x=>new RegExp(x));
 let ind = 0;
+
+function compare(expected: any, actual: any, o: Options, filePath: string) {
+    let transportDiff = testUtil.compare(expected, actual).filter(x => {
+        for (let s of o.skippedErrors.map(x => new RegExp(x))) {
+            if (s.test(x.path())) {
+                return false;
+            }
+        }
+        if (x.path().indexOf("/mediaType") > 0) {
+            return false;
+        }
+        return true;
+    });
+    if (transportDiff.length) {
+        console.log("" + (ind++) + " Diff for: " + filePath.replace(/\\/g, '/'));
+        for (let d of transportDiff) {
+            console.log(d.message("expected", "actual"));
+        }
+    }
+}
+
 function testJSON(o:Options){
+    const tckJSONPath = o.path;
     for(let st of skippedTests){
-        if(o.path.indexOf(st)>=0){
+        if(tckJSONPath.indexOf(st)>=0){
             return;
         }
     }
-    console.log(o.path.replace(/\\/g,'/'));
-    let content = fs.readFileSync(o.path,"utf-8");
-    const transportJSON = parser.loadSync(o.path.replace(/-tck\.json/,'.raml'),{
+    console.log(tckJSONPath.replace(/\\/g,'/'));
+    let content = JSON.parse(fs.readFileSync(tckJSONPath,"utf-8"));
+    const ramlApiPath = tckJSONPath.replace(/-tck\.json/,'.raml');
+    const transportJSON = parser.loadSync(ramlApiPath,{
         expandLibraries: true,
         expandExpressions: true,
         serializeMetadata: true,
         sourceMap: true
     });
+
+    //compare(content, transportJSON, o, tckJSONPath);
+
     let parserResult = transportJSON;
     let depth = -1;
     if(o.expandTypes) {
         depth = 0;
-        parserResult = parser.loadSync(o.path.replace(/-tck\.json/, '.raml'), {
+        parserResult = parser.loadSync(ramlApiPath, {
             expandLibraries: true,
             expandExpressions: true,
             expandTypes: o.expandTypes,
@@ -79,23 +101,7 @@ function testJSON(o:Options){
         typeExpansionRecursionDepth: o.typeExpansionDepth,
         sourceMap: true
     });
-    let diff = testUtil.compare(parserResult,json1).filter(x=>{
-        for(let s of o.skippedErrors.map(x=>new RegExp(x))){
-            if(s.test(x.path())){
-                return false;
-            }
-        }
-        if(x.path().indexOf("/mediaType")>0){
-            return false;
-        }
-        return true;
-    });
-    if(diff.length){
-        console.log("" + (ind++) + " Diff for: " + o.path.replace(/\\/g,'/'));
-        for(let d of diff){
-            console.log(d.message("expected", "actual"));
-        }
-    }
+    compare(parserResult, json1, o, tckJSONPath);
 }
 
 function normalizeOptions(p:string,o:Options):Options{

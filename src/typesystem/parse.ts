@@ -1031,7 +1031,7 @@ function parse(
         result = contributeToAccumulatingRegistry(<any>result, r);
     }
     var actualResult=result;
-    var hasfacetsOrOtherStuffDoesNotAllowedInExternals:string=null;
+    var hasfacetsOrOtherStuffDoesNotAllowedInExternals:string[]=null;
 
     n.children().forEach(childNode=>{
 
@@ -1102,11 +1102,13 @@ function parse(
         }
         else {
             if (key === "facets") {
-                hasfacetsOrOtherStuffDoesNotAllowedInExternals = key;
+                hasfacetsOrOtherStuffDoesNotAllowedInExternals = [key];
                 return;
             }
             else if (key == "default" || key == "xml" || key == "required") {
-                hasfacetsOrOtherStuffDoesNotAllowedInExternals = key;
+                hasfacetsOrOtherStuffDoesNotAllowedInExternals =
+                    hasfacetsOrOtherStuffDoesNotAllowedInExternals ?
+                        hasfacetsOrOtherStuffDoesNotAllowedInExternals.concat(key):[key];
             }
             else if (key.charAt(0) == '(' && key.charAt(key.length - 1) == ')') {
                 let a = new meta.Annotation(key.substr(1, key.length - 2), x.value(), key);
@@ -1179,7 +1181,7 @@ function parse(
 
     var props=n.childWithKey("facets");
     if (props){
-        if (props.kind()==NodeKind.MAP||props.kind()==NodeKind.ARRAY){
+        if (props.kind()==NodeKind.MAP){
             props.children().forEach(x=>{
                 var bean=parsePropertyBean(x,r,_col);
                 result.addMeta(new meta.FacetDeclaration(bean.id,bean.type,bean.optional));
@@ -1211,7 +1213,9 @@ function parse(
     }
     actualResult.putExtra(ts.GLOBAL,global);
     actualResult.putExtra(ts.SOURCE_EXTRA, n);
-    actualResult.putExtra(tsInterfaces.HAS_FACETS, hasfacetsOrOtherStuffDoesNotAllowedInExternals);
+    if(hasfacetsOrOtherStuffDoesNotAllowedInExternals) {
+        actualResult.putExtra(tsInterfaces.HAS_FACETS, hasfacetsOrOtherStuffDoesNotAllowedInExternals);
+    }
 
     return actualResult;
 }

@@ -18,10 +18,5 @@ engine.processDir({
 
 engine.processDir({
     path: tckDir,
-    expandTypes: true,
-    skippedErrors: [
-        "typePropertyKind",
-        "displayName",
-        "__METADATA__"
-    ]
+    expandTypes: true
 });

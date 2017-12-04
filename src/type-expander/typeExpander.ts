@@ -231,8 +231,8 @@ export class AbstractTypeEntry implements TypeEntry{
     }
 
     isUnknown():boolean{
-        if(this._original){
-            return this._original.isUnknown();
+        if(this._original && this._original.isUnknown()){
+            return _.find(this._original.allFacets(),x=>x.facetName()=="importedByChain")==null;
         }
         return false;
     }
@@ -840,6 +840,8 @@ export interface Options{
 
     typeCollection?: tsInterfaces.IParsedTypeCollection;
 
+    node?: any
+
     typeExpansionRecursionDepth?: number;
 
     serializeMetadata?: boolean;
@@ -1080,36 +1082,9 @@ export class TypeExpander {
             let sourceMap:any;
             let src = te.original() && te.original().getExtra("SOURCE");
             if (src) {
-                // let llSrc: ll.ICompilationUnit;
-                // if (hlImpl.LowLevelWrapperForTypeSystem.isInstance(src)) {
-                //     llSrc = src.node().unit();
-                // }
-                // else if (hlImpl.ASTNodeImpl.isInstance(src)) {
-                //     let schemaPath:string;
-                //     if(te.isExternal()){
-                //         schemaPath = jsonSerializerHL.getSchemaPath(src);
-                //         if(schemaPath){
-                //             result.schemaPath = schemaPath;
-                //             sourceMap = {
-                //                 path: schemaPath
-                //             };
-                //         }
-                //     }
-                //     if(!sourceMap){
-                //         sourceMap = {
-                //             path: hlImpl.actualPath(src)
-                //         };
-                //     }
-                // }
                 if (src.obj && src.obj.sourceMap) {
                     result.sourceMap = src.obj.sourceMap;
-                }
-                // if (llSrc) {
-                //     sourceMap = {
-                //         path: llSrc.path()
-                //     };
-                // }
-                if(sourceMap){
+                }if(sourceMap){
                     this.spreadSources(result,sourceMap);
                 }
             }
@@ -1173,6 +1148,10 @@ export class TypeExpander {
                 let sch = te.schema();
                 if (sch) {
                     sch = sch.trim();
+                    let resolved = resolveSchemaFragment(this.options.node,sch);
+                    if(resolved){
+                        sch = resolved;
+                    }
                     result.type = [sch];
                     if (te.schemaPath()) {
                         result.schemaPath = te.schemaPath();
@@ -1344,10 +1323,7 @@ export class TypeExpander {
         this.dumpScalarsAnnotations(te, result, expand);
         this.dumpMeta(te, result, expand);
         this.appendSourceFromExtras(result, te);
-        if (!result.displayName && result.name) {
-            result.displayName = result.name;
-            this.appendMeta(result, "displayName", "calculated");
-        }
+        this.patchDisplayName(te,result);
         this.checkIfTypePropertyIsDefault(te, result);
         return result;
     }
@@ -1438,7 +1414,7 @@ export class TypeExpander {
         if (te.original() && te.original().isUnion()) {
             return;
         }
-        if (!te.isUnknown()&&(te.original()&&!this.sourceHasKey(te, "type"))) {
+        if (!te.isUnknown()&&(te.original()&&!this.sourceHasKey(te, "type")&&!this.sourceHasKey(te, "schema"))) {
             let byDefault = false;
             if (!Array.isArray(result.type) || !result.type.length) {
                 byDefault = true;
@@ -1449,6 +1425,9 @@ export class TypeExpander {
             if (byDefault) {
                 this.appendMeta(result, "type", "insertedAsDefault");
             }
+        }
+        else{
+            this.removeMeta(result, "type");
         }
     }
 
@@ -1478,6 +1457,10 @@ export class TypeExpander {
                         };
                 }
             }
+            if(dumpedPropertyType.__METADATA__){
+                dumpedPropertyType.__METADATA__ = JSON.parse(
+                    JSON.stringify(dumpedPropertyType.__METADATA__));
+            }
             if (dumpedPropertyType.displayName == null || propType.name()) {
                 dumpedPropertyType.displayName = p.name();
                 this.appendMeta(dumpedPropertyType, "displayName", "calculated");
@@ -1488,20 +1471,48 @@ export class TypeExpander {
         if (!isFacet) {
             dumpedPropertyType.required = p.required();
         }
-        if (p.metadata()) {
-            dumpedPropertyType.__METADATA__ = p.metadata();
-        }
-        else if (!isFacet) {
+        // if (p.metadata()) {
+        //     //dumpedPropertyType.__METADATA__ = p.metadata();
+        // }
+        //else
+            if (!isFacet) {
             if (p.required()) {
-                if (propType.name() || propType.isBuiltIn()) {
-                    this.appendMeta(dumpedPropertyType, "required", "insertedAsDefault");
+                let processed = false;
+                if(p.original()) {
+                    if (p.original().range().getExtra("HAS_FACETS")) {
+                        let hf = p.original().range().getExtra("HAS_FACETS");
+                        if (hf.length && hf.indexOf("required") >= 0) {
+                            processed = true;
+                        }
+                    }
+                    if (!processed) {
+                        this.appendMeta(dumpedPropertyType, "required", "insertedAsDefault");
+                    }
                 }
-                else if (!this.sourceHasKey(propType, "required")) {
-                    this.appendMeta(dumpedPropertyType, "required", "insertedAsDefault");
+                else{
+                    if (propType.name() || propType.isBuiltIn()) {
+                        this.appendMeta(dumpedPropertyType, "required", "insertedAsDefault");
+                    }
+                    else if (!this.sourceHasKey(propType, "required")) {
+                        this.appendMeta(dumpedPropertyType, "required", "insertedAsDefault");
+                    }
                 }
             }
         }
-        this.checkIfTypePropertyIsDefault(propType, dumpedPropertyType);
+        let typeChecked = false;
+        let pte = propType;
+        if(propType.isBuiltIn()||(propType.original()&&propType.original().isBuiltin())){
+            if (p.original()) {
+                let range = p.original().range();
+                if (!range.isBuiltin()) {
+                    pte = new GeneralTypeEntry(range, [], null, [], [], null);
+                }
+            }
+        }
+        if(expand || pte!=propType) {
+            this.checkIfTypePropertyIsDefault(pte, dumpedPropertyType);
+        }
+        this.checkIfPropertyTypeIsCalculated(dumpedPropertyType, p, isFacet, expand);
         if(p.annotations() && p.annotations().length){
             let scalarsAnnotations = dumpedPropertyType.scalarsAnnotations;
             if(!scalarsAnnotations){
@@ -1608,6 +1619,17 @@ export class TypeExpander {
                 val = this.mergeFacetValues(fArr);
             }
             if (typeof val == "string" || typeof val == "number" || typeof val == "boolean") {
+                if(fn=="allowedTargets"&&!Array.isArray(val)){
+                    val = [ val ];
+                }
+                else if(fn=="enum"){
+                    if(!Array.isArray(val)){
+                        val = [val];
+                    }
+                    if(te.original()&&te.original().isString()){
+                        val = val.map(x=>""+x);
+                    }
+                }
                 result[fn] = val;
             }
         }
@@ -1646,6 +1668,17 @@ export class TypeExpander {
             if (defSysUtil.MetaNamesProvider.getInstance().hasProperty(name)) {
                 if (!result.hasOwnProperty(name)) {
                     result[name] = m.value();
+                    if(name=="allowedTargets"&&!Array.isArray(m.value())){
+                        result[name] = [ m.value() ];
+                    }
+                    else if(name=="enum"){
+                        if(!Array.isArray(m.value())){
+                            result[name] = [m.value()];
+                        }
+                        if(te.original()&&te.original().isString()){
+                            result[name] = result[name].map(x=>""+x);
+                        }
+                    }
                 }
             }
             else if (name == "closed") {
@@ -1659,15 +1692,8 @@ export class TypeExpander {
         let src = te.original() && te.original().getExtra("SOURCE");
         let result: boolean = null;
         if (src) {
-            // if (hlImpl.LowLevelWrapperForTypeSystem.isInstance(src)) {
-            //     result = src.childWithKey(key)!=null;
-            // }
-            // else if (hlImpl.ASTNodeImpl.isInstance(src)) {
-            //     result = src.attr(key)!=null;
-            // }
-            // else
             if (src.obj) {
-                result = src.obj.hasOwnProperty(key);
+                result = src.obj[key] != null;
             }
         }
         return result;
@@ -1693,6 +1719,109 @@ export class TypeExpander {
             scalarsObj[field] = fObj;
         }
         fObj[kind] = true;
+    }
+
+    protected removeMeta(obj:any,field:string){
+        if(!this.options.serializeMetadata){
+            return;
+        }
+        let metaObj = obj.__METADATA__;
+        if(!metaObj){
+            return;
+        }
+        let scalarsObj = metaObj.primitiveValuesMeta;
+        if(!scalarsObj){
+            return;
+        }
+        let fObj = scalarsObj[field];
+        if(!fObj){
+            return;
+        }
+        delete scalarsObj[field];
+        if(Object.keys(metaObj.primitiveValuesMeta)){
+            return;
+        }
+        delete metaObj.primitiveValuesMeta;
+        if(Object.keys(metaObj)){
+            return;
+        }
+        delete obj.__METADATA__;
+    }
+
+    private checkIfPropertyTypeIsCalculated(
+        dumpedPropertyType: any,
+        p: PropertyEntry,
+        isFacet: boolean,
+        expand: boolean) {
+
+        if(!this.options.serializeMetadata){
+            return;
+        }
+
+        let domSrc:typeSystem.ParseNode = p.original() && p.original().declaredAt().getExtra("SOURCE");
+        if (domSrc) {
+            let propsSrc = _.find(domSrc.children(), x => x.key() == (isFacet ? "facets" : "properties"));
+            if (propsSrc) {
+                let pSrc = _.find(propsSrc.children(), x => x.key() == p.name());
+                if (pSrc) {
+                    if (pSrc.value() && (typeof pSrc.value() === "string")) {
+                        if (!expand || typeSystem.builtInTypes().get(pSrc.value())) {
+                            this.removeMeta(dumpedPropertyType, "type");
+                        }
+                    }
+                    else if (pSrc.value() && Array.isArray(pSrc.value())) {
+                        const typeNodes = pSrc.children();
+                        if (typeNodes.length > 1) {
+                            this.removeMeta(dumpedPropertyType, "type");
+                        }
+                        else if (typeNodes.length == 1 && typeNodes[0].value() && (typeof typeNodes[0].value() === "string")) {
+                            let tNode = typeNodes[0];
+                            if (!expand || typeSystem.builtInTypes().get(tNode.value())) {
+                                this.removeMeta(dumpedPropertyType, "type");
+                            }
+                        }
+                    }
+                    else {
+                        let typeChild = _.find(pSrc.children(), x => x.key() == "type");
+                        if(!typeChild){
+                            typeChild = _.find(pSrc.children(), x => x.key() == "schema");
+                        }
+                        if (typeChild) {
+                            if (typeChild.value() && Array.isArray(typeChild.value())) {
+                                const typeNodes = typeChild.children();
+                                if (typeNodes.length > 1) {
+                                    this.removeMeta(dumpedPropertyType, "type");
+                                }
+                                else if (typeNodes.length == 1 && typeNodes[0].value()&& (typeof typeNodes[0].value() === "string")) {
+                                    let tNode = typeNodes[0];
+                                    if (!expand || typeSystem.builtInTypes().get(tNode.value())) {
+                                        this.removeMeta(dumpedPropertyType, "type");
+                                    }
+                                }
+                            }
+                            else if (typeChild.value() && (typeof typeChild.value() === "string")) {
+                                if (!expand || typeSystem.builtInTypes().get(typeChild.value())) {
+                                    this.removeMeta(dumpedPropertyType, "type");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    patchDisplayName(te:TypeEntry,result:any){
+        if (!result.displayName) {
+            if(result.__METADATA__ && result.__METADATA__.originalDisplayName){
+                result.displayName = result.__METADATA__.originalDisplayName;
+                this.appendMeta(result, "displayName", "calculated");
+            }
+            else if (result.name) {
+                result.displayName = result.name;
+                this.appendMeta(result, "displayName", "calculated");
+            }
+        }
     }
 }
 
@@ -1743,4 +1872,8 @@ function typeAttributeValue(t:tsInterfaces.IParsedType):any{
         return tAttr.value();
     }
     return null;
+}
+
+function resolveSchemaFragment(node:any,value:string):string{
+    return value;
 }

@@ -925,7 +925,9 @@ export class JsonSerializer{
         let options = this.serializationOptions();
         options.isAnnotationType = isAnnotaionType;
         options.isInsideTemplate = isInsideTemplate;
-        return new typeExpander.TypeExpander(options).serializeType(node);
+        const result = new typeExpander.TypeExpander(options).serializeType(node);
+        cleanMeta(result);
+        return result;
     }
 
     serializeTemplateReference(node:raml.TemplateReference):methods.TemplateReference{
@@ -964,4 +966,29 @@ export class JsonSerializer{
         return result;
     }
 
+}
+
+function cleanMeta(obj:datamodel.TypeReference10){
+    if(!obj || typeof obj !== "object"){
+        return;
+    }
+    if(obj.__METADATA__){
+        obj.__METADATA__ = JSON.parse(JSON.stringify(obj.__METADATA__));
+        delete obj.__METADATA__.originalDisplayName;
+    }
+    if(obj.type){
+        obj.type.forEach(x=>cleanMeta(x));
+    }
+    if((<datamodel.ArrayTypeDeclaration>obj).items){
+        (<datamodel.ArrayTypeDeclaration>obj).items.forEach(x=>cleanMeta(x));
+    }
+    if(obj.anyOf){
+        obj.anyOf.forEach(x=>cleanMeta(x));
+    }
+    if((<datamodel.ObjectTypeDeclaration>obj).properties){
+        (<datamodel.ObjectTypeDeclaration>obj).properties.forEach(x=>cleanMeta(x));
+    }
+    if(obj.facets){
+        obj.facets.forEach(x=>cleanMeta(x));
+    }
 }

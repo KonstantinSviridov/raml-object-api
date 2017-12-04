@@ -168,10 +168,10 @@ function normalizeType(i: datamodel.TypeReference10) {
 
 const redundantMetaNames = {
     "displayName": true,
-    "required": true,
+    "required": true
 };
 
-function removeDefaults(result:Object,t:datamodel.TypeDeclaration){
+function removeDefaults(result:any,t:datamodel.TypeDeclaration){
     let meta = t.__METADATA__;
     if(!meta){
         return;
@@ -184,10 +184,20 @@ function removeDefaults(result:Object,t:datamodel.TypeDeclaration){
         let sMeta = scalarsMeta[pName];
         if(sMeta.calculated||sMeta.insertedAsDefault){
             if(pName=="displayName"&&t.name&&t.displayName&&t.name!=t.displayName){
-                continue;
+                result.__METADATA__ = result.__METADATA__ || {};
+                result.__METADATA__.originalDisplayName = t.displayName;
             }
             delete result[pName];
         }
+    }
+    if(scalarsMeta["type"] && scalarsMeta["type"].insertedAsDefault){
+        let tValue = result.type;
+        if(Array.isArray(tValue)&&tValue.length){
+            if(tValue[0]=="object" && ! result.hasOwnProperty("properties")){
+                result.properties = [];
+            }
+        }
+        delete result.type;
     }
 }
 
